@@ -1,0 +1,72 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens — sumber kebenaran: Design.md (GenerateCertificate Design Guide).
+ * Jangan pakai warna/ukuran hardcoded di komponen; pakai utility dari token ini.
+ * Contoh: bg-primary, text-ink, border-line, rounded-control, text-title, shadow-card
+ */
+@theme {
+  /* Primary & aksi */
+  --color-primary: #6366f1; /* tombol utama, step aktif, pilihan aktif */
+  --color-action: #2563eb; /* link dan aksi sekunder */
+  --color-accent: #3b82f6; /* aksen interaktif */
+  --color-focus: #60a5fa; /* border focus */
+  --color-selected: #bfdbfe; /* selected state */
+  --color-blue-surface: #eff6ff; /* background state informatif */
+  --color-indigo-surface: #f5f7ff; /* background aksen lembut */
+  --color-danger: #ef4444; /* error dan destructive action */
+
+  /* Neutral — teks */
+  --color-ink: #111827; /* heading dan label utama */
+  --color-ink-strong: #1c1b1f; /* teks gelap alternatif */
+  --color-ink-secondary: #4b5563; /* teks pendukung */
+  --color-ink-muted: #6b7280; /* deskripsi dan helper text */
+  --color-ink-disabled: #9ca3af; /* placeholder dan disabled state */
+
+  /* Neutral — surface & border */
+  --color-surface: #ffffff; /* canvas, card, dan navbar */
+  --color-surface-subtle: #f9fafb; /* background panel */
+  --color-line: #e5e7eb; /* divider dan border card */
+  --color-line-strong: #d1d5db; /* border input */
+  --color-placeholder: #d9d9d9; /* area kosong */
+
+  /* Typography — hanya Regular (400) dan Bold (700), letter spacing 0 */
+  --text-title: 24px; /* product title */
+  --text-title--font-weight: 700;
+  --text-subtitle: 20px; /* supporting title */
+  --text-subtitle--font-weight: 700;
+  --text-section: 16px; /* section title dan tombol */
+  --text-section--font-weight: 700;
+  --text-body: 12px; /* deskripsi dan helper text */
+  --text-label: 12px; /* compact label: tab, field, dan chip */
+  --text-label--font-weight: 700;
+
+  /* Corner radius — radius utama komponen interaktif 6–10px */
+  --radius-detail: 2px;
+  --radius-chip: 4px;
+  --radius-control: 6px; /* tombol dan input */
+  --radius-card: 8px;
+  --radius-panel: 10px; /* panel dan upload card */
+  --radius-container: 12px; /* container besar */
+  --radius-surface: 16px; /* surface yang lebih lembut */
+
+  /* Shadow — digunakan secara ringan */
+  --shadow-card: 0 4px 12px rgb(17 24 39 / 8%);
+}
+
+@theme inline {
+  --font-sans: var(--font-inter);
+}
+
+body {
+  font-family: var(--font-sans), system-ui, sans-serif;
+  letter-spacing: 0;
+  background-color: var(--color-surface);
+  color: var(--color-ink);
+}
+
+/* Focus konsisten dengan Design.md: focus border #60A5FA */
+:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 1px;
+}
