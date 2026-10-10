@@ -115,29 +115,28 @@ Layout Halaman (/certificate)
 Latar halaman: Indigo Surface (#F5F7FF)
 Konten utama: kartu putih besar radius 12px berisi step nav di kiri dan area konten di kanan
 Ikon bantuan (?) di pojok kanan atas kartu
-Action bar di bawah kartu: aksi sekunder di kiri (Ubah File atau Preview), satu primary action di kanan (Lanjutkan atau Download)
+Action bar di bawah kartu: aksi sekunder di kiri (Tambahkan/Hapus tampilan belakang di step template, Sebelumnya di step berikutnya), satu primary action di kanan (Lanjutkan atau Download — di step 4 Download membuka menu 3 opsi unduhan)
 Catatan privasi di bawah kartu: "All certificates and recipient data stay in your browser. Nothing is permanently stored on our servers." + link Privacy policy
 Ikon ? dan catatan privasi muncul di semua step
 Alur Produk
-Upload desain sertifikat (JPG atau PNG, maksimal 10 MB)
-Preview atau ubah template (tombol Ubah File)
+Upload desain sertifikat (JPG atau PNG, maksimal 10 MB) — satu preview sisi aktif: Depan wajib, Belakang opsional
+Ganti gambar = klik preview; pindah sisi = toggle Depan/Belakang di bawah preview (posisi & gaya toggle File CSV); tambah/hapus template belakang = tombol sekunder di action bar
 Masukkan data lewat toggle File CSV atau Google Sheets
 CSV: upload file
 Google Sheets: paste link publik, data diambil otomatis
 Preview data dalam tabel
-Atur field teks di canvas (drag and drop, properti font)
+Atur field teks di canvas (drag and drop, tab sisi Depan/Belakang, ubah lebar teks via handle kanan-bawah, properti font: size, family, color picker + hex/rgb)
 Menampilkan loading state
-Preview sertifikat per baris, lalu Download satu PDF multi-halaman
+Preview sertifikat per baris (tab sisi bila ada template belakang), pilih kolom nama file, lalu klik Download → menu 3 opsi unduhan muncul
 Setiap layar sebaiknya hanya memiliki satu primary action yang paling menonjol.
 
 Keputusan Produk
 Tanpa login dan tanpa backend; semua proses berjalan di browser
-Output akhir hanya satu file PDF multi-halaman (A4 landscape), bukan PNG atau ZIP
-Elemen yang bisa ditempel di canvas: teks dinamis (field) dari kolom data saja — tanpa gambar, tanda tangan, atau QR
-Riwayat disimpan di localStorage:
-gc:draft — sesi kerja (step aktif, link data, konfigurasi field)
-gc:history — log generate
-gc:pdfs — file PDF hasil (kuota ~5MB: simpan maksimal beberapa file terbaru, tangani QuotaExceededError)
+3 opsi unduhan — semuanya dari menu tombol primary Download: PDF gabungan multi-halaman (A4 landscape), PDF satuan per sertifikat (ZIP), dan Gambar PNG (ZIP) — ZIP ditulis sendiri tanpa dependency baru; nama file `2026-001_Nama` (tahun - nomor urut per unduhan - kolom pilihan user)
+Elemen yang bisa ditempel di canvas: teks dinamis (field) dari kolom data saja, ditempatkan per sisi template (depan/belakang) — tanpa gambar, tanda tangan, atau QR
+Sesi kerja disimpan di localStorage:
+gc:draft — sesi kerja (step aktif, link data, konfigurasi field termasuk lebar, kedua template, kolom nama file)
+gc:history / gc:pdfs — peninggalan fitur History yang sudah dihapus (tampilan & penulisan); key lama tetap ikut dibersihkan Delete Data
 Tombol Delete Data mereset ketiga key dengan konfirmasi
 UI light-only: tanpa varian dark mode
 

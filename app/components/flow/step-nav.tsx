@@ -55,7 +55,7 @@ const StepNav = ({ steps, current }: StepNavProps) => {
               </span>
             </div>
             {index < steps.length - 1 && (
-              <span aria-hidden className="ml-[7px] h-20 w-px bg-line" />
+              <span aria-hidden className="ml-2 h-20 w-px bg-line" />
             )}
           </li>
         );

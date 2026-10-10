@@ -94,6 +94,18 @@ export function ImagePlusIcon(props: IconProps) {
   );
 }
 
+/** Ikon palet — tombol color picker custom (dibedakan dari swatch cepat) */
+export function PaletteIcon(props: IconProps) {
+  return (
+    <svg {...baseProps} {...props}>
+      <path d="M12 3a9 9 0 1 0 0 18 2 2 0 0 0 1.6-3.2l-.3-.4a2 2 0 0 1 1.6-3.2H16a5 5 0 0 0 5-5c0-3.9-4-6-9-6Z" />
+      <circle cx="7.5" cy="10.5" r="1" />
+      <circle cx="12" cy="7.5" r="1" />
+      <circle cx="16.5" cy="10.5" r="1" />
+    </svg>
+  );
+}
+
 export function TableIcon(props: IconProps) {
   return (
     <svg {...baseProps} {...props}>

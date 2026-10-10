@@ -12,30 +12,33 @@ import Result from "./result";
 import {
   ChevronRightIcon,
   DownloadIcon,
-  FileTextIcon,
+  ImagePlusIcon,
   RotateIcon,
 } from "../common/icons";
 import type {
   DataSource,
   DataRow,
+  DownloadKind,
   FieldConfig,
   ResultPhase,
+  TemplateSide,
 } from "./types";
+import { fieldSide } from "./types";
 import { parseCsv, type CsvTable } from "@/lib/csv";
 import { sheetCsvUrl } from "@/lib/sheets";
-import { FONT_CHOICES, fontStack } from "@/lib/fonts";
-import { buildCertificatePdf } from "@/lib/pdf";
+import { DEFAULT_TEXT_COLOR, FONT_CHOICES, fontStack } from "@/lib/fonts";
+import {
+  buildFileName,
+  uniqueFileName,
+} from "@/lib/filename";
+import { buildCertificatePdf, renderRowPngs } from "@/lib/pdf";
+import { createZip, type ZipEntry } from "@/lib/zip";
 import {
   consumePurge,
   isPurging,
   loadDraft,
-  loadHistory,
-  loadPdf,
-  pushHistory,
   saveDraft,
-  savePdf,
   type DraftState,
-  type HistoryEntry,
 } from "@/lib/storage";
 import { toPersistableImage } from "@/lib/image-data";
 
@@ -65,6 +68,25 @@ const STEPS: StepItem[] = [
 
 const IMAGE_TYPES = ["image/jpeg", "image/png"];
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 10 MB
+
+/** Opsi unduhan step 4 — tampil sebagai menu setelah tombol Download diklik */
+const DOWNLOAD_OPTIONS: { id: DownloadKind; title: string; desc: string }[] = [
+  {
+    id: "pdf",
+    title: "PDF gabungan",
+    desc: "Semua penerima dalam satu PDF multi-halaman",
+  },
+  {
+    id: "zip-pdf",
+    title: "PDF satuan (ZIP)",
+    desc: "Satu file per penerima — 2026-001_Nama",
+  },
+  {
+    id: "zip-img",
+    title: "Gambar PNG (ZIP)",
+    desc: "Foto per sisi (depan/belakang) per penerima",
+  },
+];
 
 /**
  * Kerangka halaman /certificate (Tahap 2):
@@ -97,12 +119,25 @@ export default function CertificateWizard() {
     () => new Set(),
   );
   const [previewIndex, setPreviewIndex] = useState(0);
+  // Menu 3 opsi unduhan — terbuka saat tombol Download diklik (step 4)
+  const [downloadMenu, setDownloadMenu] = useState(false);
 
   // Persistence (Tahap 7) — refresh TIDAK menghapus data; hapus hanya via Delete Data
   const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
-  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [imageBack, setImageBack] = useState<string | null>(null); // object URL belakang
+  const [imageInfoBack, setImageInfoBack] = useState<{
+    name: string;
+    size: number;
+  } | null>(null);
+  const [imageDataUrlBack, setImageDataUrlBack] = useState<string | null>(null);
+  // Sisi template yang ditampilkan di step 1 (toggle Depan/Belakang)
+  const [templateSide, setTemplateSide] = useState<TemplateSide>("front");
+  // Kolom penamaan file `2026-001_{kolom}` — "" = kolom pertama
+  const [fileNameColumn, setFileNameColumn] = useState("");
+  const [lastOutput, setLastOutput] = useState<DownloadKind | null>(null);
 
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const backInputRef = useRef<HTMLInputElement>(null);
   const csvInputRef = useRef<HTMLInputElement>(null);
   const linkInputRef = useRef<HTMLInputElement>(null);
   const restoredRef = useRef(false);
@@ -116,7 +151,6 @@ export default function CertificateWizard() {
     // Sesi purge (Delete Data) → konsumsi flag; localStorage sudah kosong
     consumePurge();
     const draft = loadDraft();
-    const savedHistory = loadHistory();
     Promise.resolve()
       .then(() => {
         if (draft) {
@@ -135,6 +169,14 @@ export default function CertificateWizard() {
             setImageDataUrl(draft.image);
           }
           if (draft.imageInfo) setImageInfo(draft.imageInfo);
+          if (typeof draft.imageBack === "string" && draft.imageBack) {
+            setImageBack(draft.imageBack);
+            setImageDataUrlBack(draft.imageBack);
+          }
+          if (draft.imageInfoBack) setImageInfoBack(draft.imageInfoBack);
+          if (typeof draft.fileNameColumn === "string") {
+            setFileNameColumn(draft.fileNameColumn);
+          }
           setSource(draft.source);
           setSheetUrl(draft.sheetUrl);
           setHeaders(draft.headers);
@@ -143,7 +185,6 @@ export default function CertificateWizard() {
           setPreviewIndex(draft.previewIndex);
           setExcludedRows(new Set(draft.excludedRows));
         }
-        setHistory(savedHistory);
       })
       .catch(() => {})
       .finally(() => {
@@ -159,6 +200,8 @@ export default function CertificateWizard() {
       step,
       image: imageDataUrl,
       imageInfo,
+      imageBack: imageDataUrlBack,
+      imageInfoBack,
       source,
       sheetUrl,
       headers,
@@ -166,12 +209,13 @@ export default function CertificateWizard() {
       fields,
       previewIndex,
       excludedRows: [...excludedRows],
+      fileNameColumn,
     };
     saveTimerRef.current = setTimeout(() => {
       if (isPurging()) return;
       if (draftRef.current) saveDraft(draftRef.current);
     }, 300);
-    return () => {
+      return () => {
       if (saveTimerRef.current) {
         clearTimeout(saveTimerRef.current);
         saveTimerRef.current = null;
@@ -181,6 +225,8 @@ export default function CertificateWizard() {
     step,
     imageDataUrl,
     imageInfo,
+    imageDataUrlBack,
+    imageInfoBack,
     source,
     sheetUrl,
     headers,
@@ -188,6 +234,7 @@ export default function CertificateWizard() {
     fields,
     previewIndex,
     excludedRows,
+    fileNameColumn,
   ]);
 
   // 3) Flush sesi terakhir saat refresh/tab ditutup (pagehide) dan unmount
@@ -208,14 +255,24 @@ export default function CertificateWizard() {
   const templateReady = image !== null;
   const dataReady = rows.length > 0 && !dataLoading;
   const fieldsReady = fields.length > 0;
+  // Kolom penamaan file efektif ("" → kolom pertama dari data)
+  const effectiveFileNameColumn = fileNameColumn || headers[0] || "";
 
-  const handleImageFile = (file: File) => {
+  /** Validasi file gambar (JPG/PNG, maks 10 MB) — dipakai sisi depan & belakang */
+  const validateImageFile = (file: File): string | null => {
     if (!IMAGE_TYPES.includes(file.type)) {
-      setImageError("Format file harus JPG atau PNG.");
-      return;
+      return "Format file harus JPG atau PNG.";
     }
     if (file.size > MAX_IMAGE_BYTES) {
-      setImageError("Ukuran file maksimal 10 MB.");
+      return "Ukuran file maksimal 10 MB.";
+    }
+    return null;
+  };
+
+  const handleImageFile = (file: File) => {
+    const message = validateImageFile(file);
+    if (message) {
+      setImageError(message);
       return;
     }
     setImageError(null);
@@ -226,6 +283,44 @@ export default function CertificateWizard() {
     void toPersistableImage(file)
       .then(setImageDataUrl)
       .catch(() => setImageDataUrl(null));
+  };
+
+  const handleBackImageFile = (file: File) => {
+    const message = validateImageFile(file);
+    if (message) {
+      setImageError(message);
+      return;
+    }
+    setImageError(null);
+    if (imageBack) URL.revokeObjectURL(imageBack);
+    setImageInfoBack({ name: file.name, size: file.size });
+    setImageBack(URL.createObjectURL(file));
+    // Tampilan berpindah ke belakang agar hasil upload langsung terlihat
+    setTemplateSide("back");
+    void toPersistableImage(file)
+      .then(setImageDataUrlBack)
+      .catch(() => setImageDataUrlBack(null));
+  };
+
+  /** Hapus template belakang — konfirmasi dulu bila ada field di sisi itu */
+  const handleRemoveBack = () => {
+    const backFields = fields.filter((f) => fieldSide(f) === "back");
+    if (
+      backFields.length > 0 &&
+      !window.confirm(
+        "Hapus template belakang? Field di sisi belakang juga akan dihapus.",
+      )
+    ) {
+      return;
+    }
+    if (imageBack) URL.revokeObjectURL(imageBack);
+    setImageBack(null);
+    setImageInfoBack(null);
+    setImageDataUrlBack(null);
+    setTemplateSide("front");
+    if (backFields.length > 0) {
+      setFields((prev) => prev.filter((f) => fieldSide(f) !== "back"));
+    }
   };
 
   /** Terapkan hasil parse: buat minimal ada header + 1 baris data */
@@ -329,20 +424,21 @@ export default function CertificateWizard() {
     }
   };
 
-  // Tambah field dari kolom yang dipilih panel (default: kolom pertama belum terpakai)
-  const handleAddField = (columnKey: string) => {
+  // Tambah field dari kolom yang dipilih panel (default: kolom pertama belum terpakai sisi itu)
+  const handleAddField = (columnKey: string, side: TemplateSide) => {
     if (!columnKey) return;
     setFields((prev) => [
       ...prev,
       {
         id: crypto.randomUUID(),
         columnKey,
+        side,
         x: 50,
         y: 50,
         fontSize: 32,
         fontFamily: "Inter",
         fontWeight: 400,
-        color: "#111827",
+        color: DEFAULT_TEXT_COLOR,
       },
     ]);
   };
@@ -394,46 +490,133 @@ export default function CertificateWizard() {
     );
   };
 
-  const handleDownloadHistory = (entry: HistoryEntry) => {
-    const dataUrl = loadPdf(entry.id);
-    if (!dataUrl) return;
+  /** Baris terpilih saja (urut asli) — dipakai ketiga opsi unduhan */
+  const chosenRows = () => rows.filter((_, index) => !excludedRows.has(index));
+
+  /** Unduh blob sementara (revoke ditunda agar unduhan sempat jalan) */
+  const downloadBlob = (blob: Blob, fileName: string) => {
+    const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
-    anchor.href = dataUrl;
-    anchor.download = entry.fileName;
+    anchor.href = url;
+    anchor.download = fileName;
     anchor.click();
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
   };
 
+  // Opsi 1 — PDF gabungan multi-halaman (primary "Download" di action bar)
   const handleGeneratePdf = async () => {
     if (!image || phase === "generating" || selectedCount === 0) return;
-    const chosenRows = rows.filter((_, index) => !excludedRows.has(index));
+    const chosen = chosenRows();
     setPhase("generating");
     setResultError(null);
     try {
       const doc = await buildCertificatePdf({
-        imageUrl: image,
+        frontUrl: image,
+        backUrl: imageBack,
         fields,
-        rows: chosenRows,
+        rows: chosen,
       });
       const fileName = `certificate-${new Date().toISOString().slice(0, 10)}.pdf`;
       doc.save(fileName);
 
-      // Log riwayat + simpan salinan PDF untuk unduh ulang (kuota bisa gagal — bukan fatal)
-      const id = crypto.randomUUID();
-      const hasPdf = savePdf(id, doc.output("datauristring"));
-      setHistory(
-        pushHistory({
-          id,
-          at: new Date().toISOString(),
-          fileName,
-          pages: chosenRows.length,
-          hasPdf,
-        }),
-      );
+      setLastOutput("pdf");
       setPhase("done");
     } catch (err) {
       setResultError(err instanceof Error ? err.message : "Gagal membuat PDF.");
       setPhase("error");
     }
+  };
+
+  // Opsi 2 — PDF satuan per sertifikat, nama dari pola → dikumpulkan jadi ZIP
+  const handleDownloadSatuan = async () => {
+    if (!image || phase === "generating" || selectedCount === 0) return;
+    const chosen = chosenRows();
+    setPhase("generating");
+    setResultError(null);
+    try {
+      const used = new Set<string>();
+      const entries: ZipEntry[] = [];
+      for (const [index, row] of chosen.entries()) {
+        const doc = await buildCertificatePdf({
+          frontUrl: image,
+          backUrl: imageBack,
+          fields,
+          rows: [row],
+        });
+        const name = uniqueFileName(
+          `${buildFileName(effectiveFileNameColumn, row, index)}.pdf`,
+          used,
+        );
+        entries.push({
+          name,
+          data: new Uint8Array(doc.output("arraybuffer")),
+        });
+      }
+      if (entries.length === 1) {
+        // Cuma satu file → langsung unduh, tidak perlu ZIP
+        downloadBlob(
+          new Blob([entries[0].data], { type: "application/pdf" }),
+          entries[0].name,
+        );
+      } else {
+        downloadBlob(createZip(entries), "pdf-satuan.zip");
+      }
+      setLastOutput("zip-pdf");
+      setPhase("done");
+    } catch (err) {
+      setResultError(
+        err instanceof Error ? err.message : "Gagal membuat PDF satuan.",
+      );
+      setPhase("error");
+    }
+  };
+
+  // Opsi 3 — PNG per baris per sisi → ZIP (suffix sisi bila belakang ada)
+  const handleDownloadImages = async () => {
+    if (!image || phase === "generating" || selectedCount === 0) return;
+    const chosen = chosenRows();
+    setPhase("generating");
+    setResultError(null);
+    try {
+      const used = new Set<string>();
+      const entries: ZipEntry[] = [];
+      for (const [index, row] of chosen.entries()) {
+        const base = buildFileName(effectiveFileNameColumn, row, index);
+        const pngs = await renderRowPngs({
+          frontUrl: image,
+          backUrl: imageBack,
+          fields,
+          row,
+        });
+        for (const { side, blob } of pngs) {
+          const suffix = imageBack
+            ? side === "front"
+              ? "-depan"
+              : "-belakang"
+            : "";
+          entries.push({
+            name: uniqueFileName(`${base}${suffix}.png`, used),
+            data: new Uint8Array(await blob.arrayBuffer()),
+          });
+        }
+      }
+      downloadBlob(createZip(entries), "gambar-satuan.zip");
+      setLastOutput("zip-img");
+      setPhase("done");
+    } catch (err) {
+      setResultError(
+        err instanceof Error ? err.message : "Gagal membuat gambar ZIP.",
+      );
+      setPhase("error");
+    }
+  };
+
+  /** Pilih opsi dari menu Download → tutup menu, jalankan handler-nya */
+  const runDownload = (kind: DownloadKind) => {
+    setDownloadMenu(false);
+    if (kind === "pdf") void handleGeneratePdf();
+    else if (kind === "zip-pdf") void handleDownloadSatuan();
+    else void handleDownloadImages();
   };
 
   const canNext =
@@ -452,22 +635,31 @@ export default function CertificateWizard() {
       setStep(step + 1);
       return;
     }
-    void handleGeneratePdf();
+    // Step 4 — klik Download membuka menu 3 opsi; generate setelah user memilih
+    setDownloadMenu((open) => !open);
   };
 
-  // Action bar kiri: step template → Ubah File; step lain → Sebelumnya
-  // (step nav tidak bisa diklik, jadi ini satu-satunya jalan kembali)
+  // Action bar kiri: step template → tambah/hapus tampilan belakang;
+  // step lain → Sebelumnya (step nav tidak bisa diklik, jadi ini satu-satunya jalan kembali)
   const secondaryAction = ((): ReactNode => {
     if (step === 0) {
       if (!templateReady) return null;
-      return (
+      return imageBack ? (
         <Button
           variant="secondary"
           size="sm"
-          iconLeft={<FileTextIcon className="size-4" />}
-          onClick={() => imageInputRef.current?.click()}
+          onClick={handleRemoveBack}
         >
-          Ubah File
+          Hapus tampilan belakang
+        </Button>
+      ) : (
+        <Button
+          variant="secondary"
+          size="sm"
+          iconLeft={<ImagePlusIcon className="size-4" />}
+          onClick={() => backInputRef.current?.click()}
+        >
+          Tambahkan tampilan belakang
         </Button>
       );
     }
@@ -476,7 +668,10 @@ export default function CertificateWizard() {
         variant="secondary"
         size="sm"
         iconLeft={<ChevronRightIcon className="size-4 rotate-180" />}
-        onClick={() => setStep(step - 1)}
+        onClick={() => {
+          setDownloadMenu(false);
+          setStep(step - 1);
+        }}
       >
         Sebelumnya
       </Button>
@@ -491,9 +686,16 @@ export default function CertificateWizard() {
             image={image}
             fileName={imageInfo?.name ?? null}
             fileSize={imageInfo?.size ?? null}
+            imageBack={imageBack}
+            backFileName={imageInfoBack?.name ?? null}
+            backFileSize={imageInfoBack?.size ?? null}
+            side={templateSide}
+            onSideChange={setTemplateSide}
             error={imageError}
             onPickImage={() => imageInputRef.current?.click()}
             onFile={handleImageFile}
+            onPickBack={() => backInputRef.current?.click()}
+            onBackFile={handleBackImageFile}
           />
         );
       case 1:
@@ -518,6 +720,7 @@ export default function CertificateWizard() {
         return (
           <EditCanvas
             image={image}
+            imageBack={imageBack}
             headers={headers}
             rows={rows}
             fields={fields}
@@ -530,17 +733,20 @@ export default function CertificateWizard() {
         return (
           <Result
             image={image}
+            imageBack={imageBack}
             rows={rows}
             fields={fields}
             phase={phase}
             error={resultError}
+            lastOutput={lastOutput}
             excludedRows={excludedRows}
             previewIndex={previewIndex}
             onPreviewIndexChange={setPreviewIndex}
             onToggleExclude={handleToggleExclude}
             onToggleAll={handleToggleAll}
-            history={history}
-            onDownloadHistory={handleDownloadHistory}
+            headers={headers}
+            fileNameColumn={effectiveFileNameColumn}
+            onFileNameColumnChange={setFileNameColumn}
           />
         );
     }
@@ -576,38 +782,72 @@ export default function CertificateWizard() {
           </button>
 
           <div className="flex gap-5 lg:gap-10">
-            <aside className="w-[210px] shrink-0 lg:w-[280px]">
+            <aside className="w-52 shrink-0 lg:w-70">
               <StepNav steps={STEPS} current={step} />
             </aside>
 
-            <div className="flex min-h-[460px] min-w-0 flex-1 flex-col">
+            <div className="flex min-h-115 min-w-0 flex-1 flex-col">
               <div className="flex flex-1 flex-col">{stepContent}</div>
 
               {/* Action bar: aksi sekunder kiri, satu primary action kanan */}
               <div className="mt-6 flex flex-wrap items-center justify-between gap-4 md:mt-8">
                 <div>{secondaryAction}</div>
-                <Button
-                  variant="primary"
-                  size="md"
-                  disabled={!canNext}
-                  loading={
-                    step === STEPS.length - 1 && phase === "generating"
-                  }
-                  onClick={handlePrimary}
-                  iconRight={
-                    step === STEPS.length - 1 ? (
-                      <DownloadIcon className="size-4" />
-                    ) : (
-                      <ChevronRightIcon className="size-4" />
-                    )
-                  }
-                >
-                  {step === STEPS.length - 1
-                    ? phase === "generating"
-                      ? "Generating..."
-                      : "Download"
-                    : "Lanjutkan"}
-                </Button>
+                <div className="relative">
+                  {/* Menu 3 opsi unduhan — terbuka di atas tombol Download */}
+                  {step === STEPS.length - 1 && downloadMenu && (
+                    <>
+                      <div
+                        aria-hidden
+                        className="fixed inset-0 z-30"
+                        onClick={() => setDownloadMenu(false)}
+                      />
+                      <div
+                        role="menu"
+                        aria-label="Pilihan unduhan"
+                        className="absolute bottom-full right-0 z-40 mb-2 w-72 rounded-control border border-line bg-surface p-1 shadow-card"
+                      >
+                        {DOWNLOAD_OPTIONS.map((option) => (
+                          <button
+                            key={option.id}
+                            type="button"
+                            role="menuitem"
+                            onClick={() => runDownload(option.id)}
+                            className="flex w-full flex-col gap-0.5 rounded-chip px-3 py-2 text-left transition hover:bg-surface-subtle"
+                          >
+                            <span className="text-label text-ink">
+                              {option.title}
+                            </span>
+                            <span className="text-body text-ink-muted">
+                              {option.desc}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                  <Button
+                    variant="primary"
+                    size="md"
+                    disabled={!canNext}
+                    loading={
+                      step === STEPS.length - 1 && phase === "generating"
+                    }
+                    onClick={handlePrimary}
+                    iconRight={
+                      step === STEPS.length - 1 ? (
+                        <DownloadIcon className="size-4" />
+                      ) : (
+                        <ChevronRightIcon className="size-4" />
+                      )
+                    }
+                  >
+                    {step === STEPS.length - 1
+                      ? phase === "generating"
+                        ? "Generating..."
+                        : "Download"
+                      : "Lanjutkan"}
+                  </Button>
+                </div>
               </div>
             </div>
           </div>
@@ -616,7 +856,7 @@ export default function CertificateWizard() {
         </section>
       </main>
 
-      {/* File picker tersembunyi, di-owned wizard agar bisa dipakai zone & tombol Ubah File */}
+      {/* File picker tersembunyi, di-owned wizard agar bisa dipakai zone preview & tombol aksi */}
       <input
         ref={imageInputRef}
         type="file"
@@ -625,6 +865,17 @@ export default function CertificateWizard() {
         onChange={(e) => {
           const file = e.target.files?.[0];
           if (file) handleImageFile(file);
+          e.target.value = "";
+        }}
+      />
+      <input
+        ref={backInputRef}
+        type="file"
+        accept="image/jpeg,image/png"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) handleBackImageFile(file);
           e.target.value = "";
         }}
       />

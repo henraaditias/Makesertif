@@ -1,6 +1,11 @@
 import type { DataSource, DataRow, FieldConfig } from "@/components/flow/types";
 
-/** Key localStorage — harus sama dengan STORAGE_KEYS di navbar (Delete Data) */
+/**
+ * Key localStorage — harus sama dengan STORAGE_KEYS di navbar (Delete Data).
+ * `history`/`pdfs` = peninggalan fitur History yang sudah dihapus;
+ * tidak pernah ditulis lagi, tetap dihapus Delete Data & fallback kuota
+ * agar data lama user ikut terbersih.
+ */
 export const GC_KEYS = {
   draft: "gc:draft",
   history: "gc:history",
@@ -51,9 +56,12 @@ export interface ImageInfo {
 export interface DraftState {
   v: 1;
   step: number;
-  /** Template sebagai data URL (URL blob tidak bertahan refresh) */
+  /** Template depan sebagai data URL (URL blob tidak bertahan refresh) */
   image: string | null;
   imageInfo: ImageInfo | null;
+  /** Template belakang (opsional — draft lama tak punya field ini) */
+  imageBack?: string | null;
+  imageInfoBack?: ImageInfo | null;
   source: DataSource;
   sheetUrl: string;
   headers: string[];
@@ -62,21 +70,15 @@ export interface DraftState {
   previewIndex: number;
   /** Baris yang DIKECUALIKAN dari PDF (kosong = semua terpilih) */
   excludedRows: number[];
-}
-
-export interface HistoryEntry {
-  id: string;
-  /** ISO timestamp */
-  at: string;
-  fileName: string;
-  pages: number;
-  /** Salinan PDF tersimpan di gc:pdfs (bisa gagal karena kuota) */
-  hasPdf: boolean;
+  /**
+   * Kolom penamaan file (`2026-001_{kolom}`) — opsional; kosong/absen =
+   * kolom pertama. Draft lama berisi `filePattern` (pola {Kolom} lama)
+   * dibiarkan sebagai key asing dan diabaikan.
+   */
+  fileNameColumn?: string;
 }
 
 const DRAFT_VERSION = 1;
-const HISTORY_LIMIT = 20;
-const PDFS_LIMIT = 3;
 
 function isQuotaError(err: unknown): boolean {
   return (
@@ -92,15 +94,6 @@ function readJson<T>(key: string): T | null {
     return raw ? (JSON.parse(raw) as T) : null;
   } catch {
     return null;
-  }
-}
-
-function writeJson(key: string, value: unknown): boolean {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-    return true;
-  } catch {
-    return false;
   }
 }
 
@@ -124,8 +117,9 @@ export function loadDraft(): DraftState | null {
 }
 
 /**
- * Simpan draft — prioritas: (1) utuh, (2) buang salinan PDF dulu,
- * (3) tanpa gambar, (4) gagal. Data lain selalu selamat.
+ * Simpan draft — prioritas: (1) utuh, (2) buang salinan PDF lama
+ * (`gc:pdfs`, peninggalan fitur History), (3) tanpa template belakang,
+ * (4) tanpa template sama sekali, (5) gagal. Data lain selalu selamat.
  */
 export function saveDraft(draft: DraftState): boolean {
   try {
@@ -135,50 +129,21 @@ export function saveDraft(draft: DraftState): boolean {
     if (!isQuotaError(err)) return false;
   }
   localStorage.removeItem(GC_KEYS.pdfs);
-  try {
-    localStorage.setItem(GC_KEYS.draft, JSON.stringify(draft));
-    return true;
-  } catch {
+  // Kandidat fallback, dari paling sedikit mengorbankan sampai paling berat
+  const attempts: DraftState[] = [draft];
+  if (draft.imageBack) attempts.push({ ...draft, imageBack: null });
+  if (draft.image) {
+    const withoutImages: DraftState = { ...draft, image: null };
+    if (draft.imageBack) withoutImages.imageBack = null;
+    attempts.push(withoutImages);
+  }
+  for (const attempt of attempts) {
     try {
-      localStorage.setItem(
-        GC_KEYS.draft,
-        JSON.stringify({ ...draft, image: null }),
-      );
+      localStorage.setItem(GC_KEYS.draft, JSON.stringify(attempt));
       return true;
     } catch {
-      return false;
+      /* lanjut ke fallback berikutnya */
     }
   }
-}
-
-export function loadHistory(): HistoryEntry[] {
-  const list = readJson<HistoryEntry[]>(GC_KEYS.history);
-  return Array.isArray(list) ? list : [];
-}
-
-/** Tambah entri terbaru di depan, batasi HISTORY_LIMIT */
-export function pushHistory(entry: HistoryEntry): HistoryEntry[] {
-  const next = [entry, ...loadHistory()].slice(0, HISTORY_LIMIT);
-  writeJson(GC_KEYS.history, next);
-  return next;
-}
-
-export function loadPdf(id: string): string | null {
-  const map = readJson<Record<string, string>>(GC_KEYS.pdfs);
-  if (!map || typeof map !== "object") return null;
-  return typeof map[id] === "string" ? map[id] : null;
-}
-
-/** Simpan salinan PDF (data URL) — maks PDFS_LIMIT terbaru; kuota penuh → kosongkan lalu coba lagi */
-export function savePdf(id: string, dataUrl: string): boolean {
-  const map = readJson<Record<string, string>>(GC_KEYS.pdfs) ?? {};
-  const next: Record<string, string> = { ...map, [id]: dataUrl };
-  // Insertion order = urutan simpan → buang yang paling lama
-  while (Object.keys(next).length > PDFS_LIMIT) {
-    const oldest = Object.keys(next).find((key) => key !== id);
-    if (!oldest) break;
-    delete next[oldest];
-  }
-  if (writeJson(GC_KEYS.pdfs, next)) return true;
-  return writeJson(GC_KEYS.pdfs, { [id]: dataUrl });
+  return false;
 }
