@@ -27,8 +27,10 @@ import {
 export const TTL_MS = 24 * 60 * 60 * 1000;
 /** Maksimum entri per store (entri terbaru dipertahankan) */
 export const CAP_PER_STORE = 30;
-/** Blob > ini tidak disimpan (metadata tetap ada; unduhan lokal tak terganggu) */
-export const MAX_FILE_BYTES = 50 * 1024 * 1024;
+// Catatan: TIDAK ada batas ukuran file — semua file (termasuk ZIP hasil
+// unduhan ratusan MB) selalu dicoba disimpan. Pengaman tetap di `persist`:
+// quota penuh → buang file terlama (maks 3×) → bila tetap gagal, metadata
+// tetap tersimpan tanpa file (hasFile jadi false).
 
 export interface TemplateRec extends BaseRecord {
   side: TemplateSide;
@@ -136,8 +138,12 @@ function byAtDesc(a: BaseRecord, b: BaseRecord): number {
 /* ------------------------------------------------------------------ */
 
 /**
- * Simpan metadata + blob. Quota penuh → buang file terlama, coba lagi
- * (maks 3 percobaan). Gagal total → return false (bukan exception).
+ * Simpan metadata + blob. Berlapis:
+ * 1. quota penuh → buang file terlama, coba lagi (maks 3 percobaan);
+ * 2. tetap gagal / tak ada file yang bisa dibuang → **metadata tetap
+ *    disimpan tanpa file** (`hasFile` di-set false) supaya entri tetap
+ *    tampil di dashboard; hanya bila tulis metadata juga gagal → return false.
+ * Tidak pernah melempar error ke pemanggil.
  */
 async function persist(
   store: MetaStore,
@@ -158,13 +164,19 @@ async function persist(
     } catch (err) {
       if (isQuotaError(err)) {
         const freed = await idbDeleteOldest(FILE_STORE).catch(() => false);
-        if (!freed) return false; // tak ada file yang bisa dibuang
-        continue;
+        if (freed) continue; // ada file terlama yang dibuang — coba lagi
       }
-      return false;
+      break; // quota tak bisa dibebaskan / error lain → simpan metadata saja
     }
   }
-  return false;
+
+  meta.hasFile = false;
+  try {
+    await idbPut(store, meta);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** Buang entri melewati cap (best-effort) setelah simpan sukses */
@@ -194,7 +206,8 @@ export async function saveTemplateRecord(input: {
     side: input.side,
     name: input.name,
     size: input.size,
-    hasFile: input.blob.size <= MAX_FILE_BYTES,
+    // Tanpa batas ukuran — persist menangani quota (evict → metadata saja)
+    hasFile: true,
   };
   const ok = await persist("templates", meta, input.blob);
   if (ok) await enforceCap("templates");
@@ -216,7 +229,7 @@ export async function saveDatasetRecord(input: {
     at,
     source: input.source,
     rows: input.rows,
-    hasFile: blob !== null && blob.size <= MAX_FILE_BYTES,
+    hasFile: blob !== null, // Sheets tanpa file; CSV selalu menyimpan file
     ...(input.name !== undefined ? { name: input.name } : {}),
     ...(input.size !== undefined ? { size: input.size } : {}),
     ...(input.url !== undefined ? { url: input.url } : {}),
@@ -242,7 +255,8 @@ export async function saveResultRecord(input: {
     files: input.files,
     pages: input.pages,
     size: input.blob.size,
-    hasFile: input.blob.size <= MAX_FILE_BYTES,
+    // Tanpa batas ukuran — `gambar-satuan.zip` ratusan MB tetap disimpan
+    hasFile: true,
   };
   const ok = await persist("results", meta, input.blob);
   if (ok) await enforceCap("results");

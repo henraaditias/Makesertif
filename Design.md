@@ -118,10 +118,10 @@ Sederhana dan tidak mengganggu workflow
 Layout Halaman (/certificate)
 Latar halaman: Indigo Surface (#F5F7FF)
 Konten utama: kartu putih besar radius 12px berisi step nav di kiri dan area konten di kanan. Tinggi kartu = viewport (h-dvh): **step nav dan action bar tidak ikut scroll — hanya isi step (upload data, kanvas, preview, dll.) yang bergulir**, sehingga tombol Lanjutkan/Unduh selalu terlihat
-Ikon bantuan (?) di pojok kanan atas kartu
-Action bar di bawah kartu: aksi sekunder di kiri (Tambahkan/Hapus tampilan belakang di step template, Sebelumnya di step berikutnya), satu primary action di kanan (Lanjutkan atau Unduh — di step 4 Unduh membuka menu 3 opsi unduhan)
+Ikon bantuan (?) di pojok kanan atas kartu — **SEMENTARA DISIAPKAN DULU (permintaan user: tombol dihapus, akan dipasang lagi nanti)**; struktur `relative` di section tetap agar mudah dipasang kembali
+Action bar di bawah kartu: aksi sekunder di kiri (Tambahkan/Hapus tampilan belakang di step template, Sebelumnya di step berikutnya), satu primary action di kanan (Lanjutkan; di step 4 tombol Unduh labelnya mengikuti format terpilih — Unduh PDF / Unduh PDF satuan / Unduh PNG — dan langsung menjalankan format itu, tanpa menu popup)
 Catatan privasi di bawah kartu: "Semua sertifikat dan data penerima tetap di browser kamu. Tidak ada yang disimpan permanen di server kami." + link Privacy policy
-Ikon ? dan catatan privasi muncul di semua step
+Catatan privasi muncul di semua step (ikon ? sedang disembunyikan sementara)
 Layout Halaman Utama (/)
 MASIH PLACEHOLDER KOSONG — konten lengkap menyusul setelah didiskusikan (mockup referensi ada di folder rev/)
 Latar halaman: Indigo Surface (#F5F7FF) — sama seperti wizard
@@ -129,6 +129,19 @@ Isi saat ini: navbar (tanpa tombol Hapus Data) + judul produk + pesan singkat + 
 Halaman /privacy juga placeholder kosong (judul + pesan singkat); link Privacy policy di footer tetap mengarah ke sana
 Halaman responsif (termasuk layar <768px) — overlay layar selayar hanya untuk /certificate dan /dashboard; di layar pendek (HP dirotot, tinggi ≤500px) wizard & dashboard dikompakkan otomatis lewat varian short: padding/min-height ramping, panel properti kanvas pindah ke samping canvas dengan scroll sendiri, tinggi gambar canvas/preview mengikuti viewport (dvh)
 Bahasa konten halaman utama & Privacy policy: Indonesia
+Layout Halaman Dashboard (/dashboard)
+Latar halaman: Indigo Surface (#F5F7FF) — sama seperti wizard; tinggi = viewport (h-dvh), halaman TIDAK digulir
+Urutan atas ke bawah: navbar (hanya tombol Hapus Data) → baris judul (kiri: "Dashboard" Display title 36px Bold; kanan: primary "Buat Sertifikat") → banner masa simpan (latar merah danger, teks putih, ikon database di kiri: "Data di Dashboard ini bersifat sementara. Dihapus otomatis setelah 24 jam sejak diunggah atau dihasilkan. Gunakan tombol Hapus Data untuk langsung menghapus datanya.") → pemberitahuan prune (opsional, kartu tipis) → status unduhan (opsional, hanya selama proses unduh berjalan: teks fase "Menyiapkan file…"/"Mengunduh" + nama & ukuran file + hitung mundur "sisa ± …" + progress bar setinggi 6px; bisa ditutup lebih dulu lewat ×) → kotak isi → footer privasi (paling bawah, di luar area scroll)
+Kotak isi: satu kontainer putih radius 12px berisi AKORDEON 3 panel horizontal — File Sertifikat, Data, Hasil Generate (default yang melebar: Hasil Generate)
+Panel aktif: header (ikon bulat + judul + label "N data") lalu daftar item; hanya daftar inilah yang bergulir (overflow-y-auto)
+Panel non-aktif: tab sempit (48px; 56px pada layar ≥1024px) berisi ikon bulat, judul diputar vertikal, dan angka jumlah di bawah — berfungsi sebagai tombol (aria-expanded)
+Klik panel non-aktif → panel itu melebar dan panel sebelumnya menyempit (transisi anime.js 320ms outCubic; tanpa animasi bila prefers-reduced-motion); klik panel aktif tetap aktif
+Pemisah antar panel: garis border-line tipis
+Isi panel File Sertifikat: thumbnail (kotak 56px) + nama file + chip Depan/Belakang + ukuran + sisa waktu, lalu tombol sekunder "Pratinjau" (ikon mata) dan "Unduh" (ikon unduh) — keduanya hanya bila file masih tersimpan
+Thumbnail ditampilkan dari hasil perkecilan (JPEG 256px, cache) supaya panel terbuka halus; "Unduh" selalu memakai file asli
+Isi panel Data: ikon (File CSV / Google Sheets) + nama (untuk Google Sheets berupa link) + jenis · ukuran · jumlah baris + sisa waktu; tombol "Pratinjau" tersedia untuk File CSV yang masih tersimpan dan untuk semua baris Google Sheets, tombol "Unduh" hanya untuk File CSV yang masih tersimpan
+Isi panel Hasil Generate: ikon unduh + nama file + jenis output · jumlah file · halaman · ukuran + sisa waktu; tombol "Pratinjau" dan "Unduh ulang" hanya bila file masih tersimpan (bila tidak, baris diberi keterangan "file tidak disimpan di browser")
+Modal pratinjau berlaku untuk ketiga panel (satu komponen, tanpa animasi; header berisi nama file + tombol Unduh & Tutup; tutup lewat Esc / Tutup / klik latar): File Sertifikat → gambar ukuran penuh; Data File CSV → tabel 50 baris pertama (header, nomor baris, zebra; catatan "Menampilkan 50 baris pertama" bila data lebih panjang); Data Google Sheets → tabel sama lewat fetch gviz (pesan ramah bila link tidak dibagikan ke publik); Hasil PDF gabungan → iframe viewer PDF browser; Hasil ZIP → isi dibaca lalu ditampilkan (gambar: tampilan penuh; PDF: iframe) dengan navigator "n / N · nama file" dan daftar nama file di bawahnya
 Alur Produk
 Upload desain sertifikat (JPG atau PNG, maksimal 10 MB) — satu preview sisi aktif: Depan wajib, Belakang opsional
 Ganti gambar = klik preview; pindah sisi = toggle Depan/Belakang di bawah preview (posisi & gaya toggle File CSV); tambah/hapus template belakang = tombol sekunder di action bar
@@ -138,18 +151,20 @@ Google Sheets: paste link publik, data diambil otomatis
 Preview data dalam tabel
 Atur field teks di canvas (drag and drop, toggle sisi Depan/Belakang di bawah kanvas, ubah lebar teks via handle kanan-bawah, properti font: size, jenis font (keluarga saja), gaya teks lewat toggle Tebal & Miring yang terpisah — bisa keduanya, salah satu, atau tidak sama sekali — perataan kiri/tengah/kanan, color picker + hex/rgb). Field tidak pernah bisa digeser melewati tepi foto (lebar default dijaga minimal 5%, tepi kanan `x + width ≤ 100`, tepi bawah `y + tinggi kotak ≤ 100` — dikunci ulang otomatis setelah ukuran font/kolom berubah)
 Menampilkan loading state
-Preview sertifikat per baris (toggle sisi Depan/Belakang di bawah preview bila ada template belakang), pilih kolom nama file, lalu klik Unduh → menu 3 opsi unduhan muncul
+Preview sertifikat per baris (toggle sisi Depan/Belakang di bawah preview bila ada template belakang), lalu Panel Unduh (menggantikan menu popup): **satu panel ringkas tiga kolom — Format file (segmented PDF / PDF satuan / PNG) · Kualitas (segmented Normal / HD / 4K + keterangan piksel per halaman) · Nama file (dropdown pilih kolom)** — berdampingan di layar lebar, menumpuk sendiri di layar sempit; di bawahnya baris estimasi `Perkiraan ± X detik — N halaman · kualitas …` yang saat berjalan berubah jadi progress bar + hitung mundur (`42 / 200 halaman · sisa ± 28 detik`)
 Setiap layar sebaiknya hanya memiliki satu primary action yang paling menonjol.
 
 Keputusan Produk
 Tanpa login dan tanpa backend; semua proses berjalan di browser
-3 opsi unduhan — semuanya dari menu tombol primary Unduh: PDF gabungan multi-halaman (A4 landscape), PDF satuan per sertifikat (ZIP), dan Gambar PNG (ZIP) — ZIP ditulis sendiri tanpa dependency baru; nama file `2026-001_Nama` (tahun - nomor urut per unduhan - kolom pilihan user)
+3 opsi unduhan, dipilih lewat **panel inline di step 4** (tanpa menu popup; tombol primary Unduh menjalankan format terpilih): PDF gabungan multi-halaman (A4 landscape), PDF satuan per sertifikat (ZIP), dan Gambar PNG (ZIP) — ZIP ditulis sendiri tanpa dependency tambahan; nama file `2026-001_Nama` (tahun - nomor urut per unduhan - kolom pilihan user)
+Kualitas render untuk ketiga format: Normal (A4 200 DPI, 2339×1654), HD (default; A4 400 DPI, 4677×3307), 4K (lebar 3840 px, 3840×2715) — preset di `app/lib/quality.ts`, pilihan format & kualitas disimpan di draft; estimasi waktu memakai heuristik ms/baris yang ditimpa hasil ukur nyata (`gc:perf`)
+Animasi: anime.js v4 (`animejs`) — loading generate (titik berdenyut stagger + progress bar), pop banner sukses, crossfade preview Depan/Belakang, transisi antar step, indikator segmented meluncur, dan fade-up halus di halaman `/` + `/privacy`; semua dilewati bila `prefers-reduced-motion` (pembungkus di `app/lib/animations.ts`)
 Elemen yang bisa ditempel di canvas: teks dinamis (field) dari kolom data saja, ditempatkan per sisi template (depan/belakang) — tanpa gambar, tanda tangan, atau QR
 Sesi kerja disimpan di localStorage:
 gc:draft — sesi kerja (step aktif, link data, konfigurasi field termasuk lebar, kedua template, kolom nama file)
 gc:history / gc:pdfs — peninggalan fitur History yang sudah dihapus (tampilan & penulisan); key lama tetap ikut dibersihkan tombol Hapus Data
 Tombol Hapus Data di wizard mereset ketiga key localStorage dengan konfirmasi (tidak menyentuh data Dashboard)
-Dashboard /dashboard — riwayat file (template, CSV, hasil unduhan) di IndexedDB terpisah dari localStorage: semua item bisa diunduh ulang, dihapus otomatis setelah 24 jam (banner masa simpan + countdown per item + pemberitahuan saat data lama terhapus), dan punya tombol Hapus Data sendiri yang tidak memengaruhi sesi membuat sertifikat
+Dashboard /dashboard — riwayat file (template, CSV, hasil unduhan) di IndexedDB terpisah dari localStorage: semua item bisa diunduh ulang, dihapus otomatis setelah 24 jam (banner masa simpan + countdown per item + pemberitahuan saat data lama terhapus), dan punya tombol Hapus Data sendiri yang tidak memengaruhi sesi membuat sertifikat. Hasil unduhan (PDF/ZIP) disimpan hingga 512MB supaya file besar seperti gambar-satuan.zip tetap bisa diunduh ulang; bila kuota browser penuh, file terlama dibuang lebih dulu — bila tetap gagal entri tetap tampil tanpa tombol unduh, diberi keterangan "file tidak disimpan di browser"
 UI light-only: tanpa varian dark mode
 
 Prinsip Utama

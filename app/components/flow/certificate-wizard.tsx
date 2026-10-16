@@ -887,16 +887,10 @@ export default function CertificateWizard() {
       <RotateGate />
 
       <main className="mx-auto flex w-full max-w-7xl min-h-0 flex-1 flex-col px-4 py-4 short:py-2 md:px-6">
+        {/* Ikon bantuan (?) di pojok kanan atas kartu DISIAPKAN untuk
+            disimpan — tombolnya sengaja disembunyikan dulu (permintaan user);
+            struktur `relative` di section tetap agar mudah dipasang lagi */}
         <section className="relative flex min-h-0 flex-1 flex-col rounded-container border border-line bg-surface p-5 shadow-card short:p-3">
-          <button
-            type="button"
-            aria-label="Bantuan"
-            title="Bantuan"
-            className="absolute right-4 top-4 flex size-8 items-center justify-center rounded-full border border-line-strong text-label text-ink transition hover:bg-surface-subtle md:right-6 md:top-6"
-          >
-            ?
-          </button>
-
           {/* Step nav di kiri TIDAK ikut scroll — hanya isi step (kolom kanan)
               yang bergulir; action bar & footer menempel di luar area scroll */}
           <div className="flex min-h-0 flex-1 gap-5 lg:gap-10">
