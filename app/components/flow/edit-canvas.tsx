@@ -1,24 +1,36 @@
 "use client";
 
 import {
+  useEffect,
   useRef,
   useState,
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { PaletteIcon, PlusIcon } from "../common/icons";
+import {
+  AlignCenterIcon,
+  AlignLeftIcon,
+  AlignRightIcon,
+  PaletteIcon,
+  PlusIcon,
+} from "../common/icons";
 import { useTemplateScale } from "./use-template-scale";
 import {
   DEFAULT_TEXT_COLOR,
-  FONT_CHOICES,
+  FONT_FAMILIES,
   FONT_COLORS,
   fontStack,
   hexToRgb,
   parseColorInput,
   type FontWeight,
 } from "@/lib/fonts";
-import type { DataRow, FieldConfig, TemplateSide } from "./types";
-import { fieldSide } from "./types";
+import type {
+  DataRow,
+  FieldConfig,
+  TemplateSide,
+  TextAlign,
+} from "./types";
+import { fieldAlign, fieldItalic, fieldSide } from "./types";
 
 export interface EditCanvasProps {
   /** Object URL template depan */
@@ -40,6 +52,30 @@ const SIDES: { id: TemplateSide; label: string }[] = [
   { id: "front", label: "Depan" },
   { id: "back", label: "Belakang" },
 ];
+
+/** Kelas perataan per field — nilai statis supaya tetap utility Tailwind */
+const ALIGN_CLASS: Record<TextAlign, string> = {
+  left: "text-left",
+  center: "text-center",
+  right: "text-right",
+};
+
+/** Opsi perataan tombol di panel properti */
+const ALIGNMENTS: { id: TextAlign; label: string; icon: typeof AlignLeftIcon }[] =
+  [
+    { id: "left", label: "Rata kiri", icon: AlignLeftIcon },
+    { id: "center", label: "Rata tengah", icon: AlignCenterIcon },
+    { id: "right", label: "Rata kanan", icon: AlignRightIcon },
+  ];
+
+/** Gaya tombol toggle kecil (Bold/Italic/Perataan) — aktif = indigo lembut */
+const toggleClass = (active: boolean) =>
+  [
+    "flex size-8 items-center justify-center rounded-chip border transition",
+    active
+      ? "border-primary bg-selected text-ink"
+      : "border-line-strong bg-surface text-ink-muted hover:border-focus hover:text-ink",
+  ].join(" ");
 
 /**
  * Step 3 — Designing on a canvas (Design.md).
@@ -162,8 +198,9 @@ export default function EditCanvas({
     const drag = dragRef.current;
     const rect = layerRef.current?.getBoundingClientRect();
     if (!drag || !rect || drag.id !== field.id || drag.mode !== "move") return;
-    // Bila lebar sudah diatur user, x dibatasi agar `x + width ≤ 100`
-    const maxX = field.width != null ? Math.max(0, 100 - field.width) : 100;
+    // Tepi kanan: lebar sudah diatur user → `x + width ≤ 100`;
+    // belum diatur (default `100 − x`) → x maks 95 agar kotak tak pernah < 5%
+    const maxX = field.width != null ? Math.max(0, 100 - field.width) : 95;
     const x = Math.min(
       clamp(((e.clientX - rect.left) / rect.width) * 100 - drag.offsetX),
       maxX,
@@ -203,37 +240,45 @@ export default function EditCanvas({
     }
   };
 
+  /**
+   * Penjaga batas foto — field TIDAK PERNAH boleh keluar tepi:
+   * tepi kanan `x + width ≤ 100` (lebar default `100 − x` dijaga ≥ 5%)
+   * dan tepi bawah `y + tinggi kotak ≤ 100`.
+   * Jalan setiap render untuk semua patch (drag, resize, ukuran font, ganti
+   * kolom — tiga yang terakhir mengubah tinggi kotak) dan berhenti sendiri
+   * begitu field sudah berada di dalam batas (tanpa update → tanpa loop).
+   */
+  useEffect(() => {
+    const rect = layerRef.current?.getBoundingClientRect();
+    if (!rect || rect.height <= 0) return;
+    for (const field of sideFields) {
+      const patch: Partial<FieldConfig> = {};
+
+      // Tepi kanan — tanpa handle lebar, sisa ruang ke tepi kanan (min 5%)
+      const maxX = field.width != null ? 100 - field.width : 95;
+      const targetX = Math.max(0, Math.min(field.x, Math.floor(maxX * 100) / 100));
+      if (field.x - targetX > 0.01) patch.x = targetX;
+
+      // Tepi bawah — ukur tinggi kotak terbaru di DOM (setelah render)
+      const box = fieldRefs.current.get(field.id);
+      if (box && box.offsetHeight > 0) {
+        const maxY = 100 - (box.offsetHeight / rect.height) * 100;
+        const targetY = Math.max(0, Math.min(field.y, Math.floor(maxY * 100) / 100));
+        if (field.y - targetY > 0.01) patch.y = targetY;
+      }
+
+      if (patch.x !== undefined || patch.y !== undefined) {
+        onUpdateField(field.id, patch);
+      }
+    }
+  });
+
   return (
-    <div className="flex flex-1 flex-col gap-4 lg:flex-row lg:gap-6">
+    <div className="flex flex-1 flex-col gap-4 short:flex-row short:gap-4 lg:flex-row lg:gap-6">
       {/* Canvas sertifikat */}
       <div className="flex min-w-0 flex-1 flex-col gap-3">
-        {/* Tab sisi — belakang aktif hanya bila template belakang ada */}
-        <div
-          role="tablist"
-          aria-label="Sisi template"
-          className="inline-flex self-start rounded-control bg-blue-surface p-1"
-        >
-          {SIDES.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              role="tab"
-              aria-selected={currentSide === item.id}
-              disabled={item.id === "back" && !imageBack}
-              onClick={() => setActiveSide(item.id)}
-              className={[
-                "rounded-chip px-4 py-2 text-label transition disabled:pointer-events-none disabled:opacity-50",
-                currentSide === item.id
-                  ? "bg-selected text-ink"
-                  : "text-ink-muted hover:text-ink",
-              ].join(" ")}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="flex min-h-105 flex-1 items-center justify-center rounded-panel border border-line bg-surface-subtle p-4">
+        {/* Kanvas — di layar pendek (HP dirotot) tinggi mengikuti viewport */}
+        <div className="flex min-h-105 flex-1 items-center justify-center rounded-panel border border-line bg-surface-subtle p-4 short:min-h-0 short:p-2">
           {activeImage ? (
             <div ref={layerRef} className="relative inline-block max-w-full">
               {/* URL blob lokal — tidak bisa dioptimasi next/image */}
@@ -243,7 +288,7 @@ export default function EditCanvas({
                 src={activeImage}
                 alt={`Canvas sertifikat sisi ${currentSide}`}
                 draggable={false}
-                className="block max-h-105 w-auto max-w-full rounded-control border border-line"
+                className="block max-h-105 w-auto max-w-full rounded-control border border-line short:max-h-[48dvh]"
               />
               {sideFields.map((field) => (
                 <div
@@ -265,6 +310,8 @@ export default function EditCanvas({
                     "left-[var(--fx)] top-[var(--fy)] w-[var(--fw)] text-[length:var(--fs)]",
                     "font-[family-name:var(--ff)] text-[color:var(--fc)]",
                     field.fontWeight === 700 ? "font-bold" : "font-normal",
+                    fieldItalic(field) ? "italic" : "",
+                    ALIGN_CLASS[fieldAlign(field)],
                     selected?.id === field.id
                       ? "ring-2 ring-accent"
                       : "hover:ring-1 hover:ring-focus",
@@ -302,14 +349,41 @@ export default function EditCanvas({
             <p className="text-body text-ink-disabled">Template belum tersedia.</p>
           )}
         </div>
+
+        {/* Toggle sisi di BAWAH canvas — posisi sama seperti step Template */}
+        <div
+          role="tablist"
+          aria-label="Sisi template"
+          className="inline-flex self-start rounded-control bg-blue-surface p-1"
+        >
+          {SIDES.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              role="tab"
+              aria-selected={currentSide === item.id}
+              disabled={item.id === "back" && !imageBack}
+              onClick={() => setActiveSide(item.id)}
+              className={[
+                "rounded-chip px-4 py-2 text-label transition disabled:pointer-events-none disabled:opacity-50",
+                currentSide === item.id
+                  ? "bg-selected text-ink"
+                  : "text-ink-muted hover:text-ink",
+              ].join(" ")}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* Panel properti — di bawah canvas pada layar <1024px */}
-      <aside className="flex w-full shrink-0 flex-col gap-4 lg:w-70">
+      {/* Panel properti — di bawah canvas pada layar <1024px;
+          di layar pendek (HP dirotot) pindah ke samping & scroll sendiri */}
+      <aside className="flex w-full shrink-0 flex-col gap-4 short:max-h-[48dvh] short:min-h-0 short:w-70 short:gap-3 short:overflow-y-auto lg:w-70">
         <div>
-          <h2 className="text-section text-ink">Designing on a canvas</h2>
+          <h2 className="text-section text-ink">Desain di kanvas</h2>
           <p className="text-body text-ink-muted">
-            drag and drop your data fields
+            Seret dan letakkan kolom datamu
           </p>
         </div>
 
@@ -317,7 +391,7 @@ export default function EditCanvas({
         <div className="flex flex-col gap-3 rounded-panel bg-blue-surface p-4">
           {sideFields.length === 0 && (
             <p className="text-body text-ink-muted">
-              Belum ada field. Klik Add field untuk menempelkan kolom data.
+              Belum ada field. Klik Tambah field untuk menempelkan kolom data.
             </p>
           )}
           {sideFields.map((field) => (
@@ -370,7 +444,7 @@ export default function EditCanvas({
             <span className="flex size-8 items-center justify-center rounded-chip bg-selected text-action">
               <PlusIcon className="size-4" />
             </span>
-            <span className="text-label text-ink">Add field</span>
+            <span className="text-label text-ink">Tambah field</span>
           </button>
         </div>
 
@@ -381,7 +455,7 @@ export default function EditCanvas({
         >
           <div>
             <div className="mb-2 flex items-center justify-between">
-              <legend className="text-label text-ink">Font Size</legend>
+              <legend className="text-label text-ink">Ukuran font</legend>
               <span className="text-body text-ink-muted">
                 {selected ? `${selected.fontSize} px` : "—"}
               </span>
@@ -400,34 +474,99 @@ export default function EditCanvas({
           </div>
 
           <div>
-            <label className="mb-2 block text-label text-ink">Font Family</label>
+            <label className="mb-2 block text-label text-ink">Jenis font</label>
             <select
-              value={
-                selected ? `${selected.fontFamily}|${selected.fontWeight}` : ""
-              }
+              value={selected?.fontFamily ?? ""}
               onChange={(e) => {
                 if (!selected) return;
-                const [family, weight] = e.target.value.split("|");
-                onUpdateField(selected.id, {
-                  fontFamily: family,
-                  fontWeight: Number(weight) as FontWeight,
-                });
+                onUpdateField(selected.id, { fontFamily: e.target.value });
               }}
               className="w-full rounded-control border border-line-strong bg-surface px-3 py-2.5 text-body text-ink focus:border-focus focus:outline-none"
             >
-              {FONT_CHOICES.map((choice) => (
-                <option
-                  key={choice.label}
-                  value={`${choice.family}|${choice.weight}`}
-                >
-                  {choice.label}
+              {FONT_FAMILIES.map((family) => (
+                <option key={family} value={family}>
+                  {family}
                 </option>
               ))}
             </select>
           </div>
 
+          {/* Gaya teks — Bold & Italic dua toggle terpisah: bisa keduanya,
+              salah satu, atau tidak sama sekali (default: reguler) */}
           <div>
-            <span className="mb-2 block text-label text-ink">Font Color</span>
+            <span className="mb-2 block text-label text-ink">Gaya teks</span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                aria-label="Tebal"
+                aria-pressed={selected?.fontWeight === 700}
+                title="Tebal (Bold)"
+                onClick={() => {
+                  if (!selected) return;
+                  onUpdateField(selected.id, {
+                    fontWeight:
+                      (selected.fontWeight === 700 ? 400 : 700) as FontWeight,
+                  });
+                }}
+                className={toggleClass(selected?.fontWeight === 700)}
+              >
+                <span className="text-label font-bold">B</span>
+              </button>
+              <button
+                type="button"
+                aria-label="Miring"
+                aria-pressed={selected?.fontStyle === "italic"}
+                title="Miring (Italic)"
+                onClick={() => {
+                  if (!selected) return;
+                  onUpdateField(selected.id, {
+                    fontStyle:
+                      selected.fontStyle === "italic" ? "normal" : "italic",
+                  });
+                }}
+                className={toggleClass(selected?.fontStyle === "italic")}
+              >
+                <span className="text-label font-serif italic">I</span>
+              </button>
+              <span className="text-body text-ink-muted">
+                {!selected
+                  ? "—"
+                  : `${selected.fontWeight === 700 ? "Tebal" : "Reguler"} · ${
+                      selected.fontStyle === "italic" ? "Miring" : "Lurus"
+                    }`}
+              </span>
+            </div>
+          </div>
+
+          {/* Perataan teks dalam kotak — kiri / tengah / kanan */}
+          <div>
+            <span className="mb-2 block text-label text-ink">
+              Perataan teks
+            </span>
+            <div className="flex items-center gap-2">
+              {ALIGNMENTS.map((item) => {
+                const active = !!selected && fieldAlign(selected) === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    aria-label={item.label}
+                    aria-pressed={active}
+                    title={item.label}
+                    onClick={() => {
+                      if (selected) onUpdateField(selected.id, { align: item.id });
+                    }}
+                    className={toggleClass(active)}
+                  >
+                    <item.icon className="size-4" />
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div>
+            <span className="mb-2 block text-label text-ink">Warna font</span>
             <div className="flex flex-wrap items-center gap-2">
               {/* Swatch cepat (Design.md) — aktif = warna field */}
               {FONT_COLORS.map((color) => (
@@ -456,7 +595,7 @@ export default function EditCanvas({
                 <PaletteIcon className="size-4 text-ink-muted" />
                 <input
                   type="color"
-                  aria-label="Color picker"
+                  aria-label="Pemilih warna"
                   value={activeColor}
                   onChange={(e) => applyColor(e.target.value)}
                   className="absolute inset-0 size-full cursor-pointer opacity-0"
@@ -466,7 +605,7 @@ export default function EditCanvas({
               {/* HEX editable — commit saat valid, reset saat blur */}
               <input
                 type="text"
-                aria-label="Hex color"
+                aria-label="Kode warna heksadesimal"
                 spellCheck={false}
                 value={hexText}
                 onChange={(e) => {

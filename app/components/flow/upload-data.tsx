@@ -69,7 +69,7 @@ export default function UploadData({
       {loading ? (
         <div className="flex w-full flex-1 flex-col items-center justify-center gap-3 rounded-panel border-2 border-dashed border-line bg-surface">
           <SpinnerIcon className="size-7 animate-spin text-action" />
-          <span className="text-body text-ink-muted">Loading data...</span>
+          <span className="text-body text-ink-muted">Memuat data...</span>
         </div>
       ) : rows.length > 0 ? (
         <DataTable headers={headers} rows={rows} />
@@ -84,17 +84,21 @@ export default function UploadData({
             className={`size-7 ${dragging ? "text-action" : "text-ink-muted"}`}
           />
           <span className="text-body text-ink-muted">
-            {dragging ? "Drop your file here" : "Click to upload or drag and drop"}
+            {dragging
+              ? "Jatuhkan file di sini"
+              : "Klik untuk unggah atau seret dan jatuhkan"}
           </span>
-          <span className="text-body text-ink-disabled">Our File CSV</span>
+          <span className="text-body text-ink-disabled">
+            File CSV kamu
+          </span>
         </button>
       ) : (
         <div
-          className={`flex w-full flex-1 flex-col items-center justify-center gap-2 rounded-panel border-2 border-dashed px-6 py-10 text-center transition ${error ? "border-danger bg-surface" : "border-line bg-surface"}`}
+          className={`flex w-full flex-1 flex-col items-center justify-center gap-2 rounded-panel border-2 border-dashed px-6 py-10 short:py-4 text-center transition ${error ? "border-danger bg-surface" : "border-line bg-surface"}`}
         >
           <TableIcon className="size-7 text-ink-muted" />
           <span className="text-body text-ink-muted">
-            Paste a public Google Sheets link
+            Tempel link Google Sheets yang dibagikan ke publik
           </span>
           <div className="relative mt-3 w-full max-w-xl">
             <input

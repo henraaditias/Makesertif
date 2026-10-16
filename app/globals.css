@@ -31,6 +31,8 @@
   --color-placeholder: #d9d9d9; /* area kosong */
 
   /* Typography — hanya Regular (400) dan Bold (700), letter spacing 0 */
+  --text-display: 36px; /* judul besar: hero landing & halaman privacy */
+  --text-display--font-weight: 700;
   --text-title: 24px; /* product title */
   --text-title--font-weight: 700;
   --text-subtitle: 20px; /* supporting title */
@@ -57,6 +59,14 @@
 @theme inline {
   --font-sans: var(--font-inter);
 }
+
+/*
+ * Varian `short` — layar pendek (HP dirotot/landscape, tinggi ≤500px).
+ * Dipakai wizard & dashboard: padding & tinggi minimum dikompakkan,
+ * panel properti kanvas pindah ke samping canvas, tinggi gambar dibatasi
+ * `dvh` supaya muat tanpa scroll berlebih. Lihat AGENTS.md ( Responsif ).
+ */
+@custom-variant short (@media (max-height: 500px));
 
 body {
   font-family: var(--font-sans), system-ui, sans-serif;

@@ -133,7 +133,7 @@ export default function UploadCertificate({
                   ? `Template ${activeName}`
                   : `Template sertifikat sisi ${currentSide}`
               }
-              className="max-h-98 w-auto rounded-control border border-line object-contain"
+              className="max-h-98 w-auto rounded-control border border-line object-contain short:max-h-[55dvh]"
             />
             <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
               <span
@@ -141,7 +141,7 @@ export default function UploadCertificate({
                   dragging ? "opacity-100" : "opacity-0 group-hover:opacity-100"
                 }`}
               >
-                {dragging ? "Drop your file here" : "Click to replace"}
+                {dragging ? "Jatuhkan file di sini" : "Klik untuk mengganti"}
               </span>
             </span>
           </div>
@@ -157,11 +157,11 @@ export default function UploadCertificate({
             />
             <span className="text-body text-ink-muted">
               {dragging
-                ? "Drop your file here"
-                : "Click to upload or drag and drop"}
+                ? "Jatuhkan file di sini"
+                : "Klik untuk unggah atau seret dan jatuhkan"}
             </span>
             <span className="text-body text-ink-disabled">
-              JPG or PNG · Up to 10 MB
+              JPG atau PNG · Maksimal 10 MB
             </span>
           </button>
         )}

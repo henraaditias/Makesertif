@@ -13,20 +13,25 @@ import {
   ChevronRightIcon,
   DownloadIcon,
   ImagePlusIcon,
-  RotateIcon,
 } from "../common/icons";
+import RotateGate from "../common/rotate-gate";
 import type {
   DataSource,
   DataRow,
   DownloadKind,
   FieldConfig,
+  GenerateProgress,
+  QualityLevel,
   ResultPhase,
   TemplateSide,
 } from "./types";
+import { DOWNLOAD_BUTTON_LABEL } from "./types";
 import { fieldSide } from "./types";
 import { parseCsv, type CsvTable } from "@/lib/csv";
 import { sheetCsvUrl } from "@/lib/sheets";
-import { DEFAULT_TEXT_COLOR, FONT_CHOICES, fontStack } from "@/lib/fonts";
+import { DEFAULT_TEXT_COLOR, FONT_FAMILIES, fontSpec } from "@/lib/fonts";
+import { DEFAULT_QUALITY, recordMsPerRow } from "@/lib/quality";
+import { fadeInUp, useAnimationLayoutEffect } from "@/lib/animations";
 import {
   buildFileName,
   uniqueFileName,
@@ -41,52 +46,38 @@ import {
   type DraftState,
 } from "@/lib/storage";
 import { toPersistableImage } from "@/lib/image-data";
+import {
+  saveDatasetRecord,
+  saveResultRecord,
+  saveTemplateRecord,
+} from "@/lib/activity";
 
 /** Definisi 4 step — teks persis mockup (rev/Mockup.png) */
 const STEPS: StepItem[] = [
   {
     id: "template",
-    title: "Certificate Template",
-    description: "Upload your certificate design",
+    title: "Template Sertifikat",
+    description: "Unggah desain sertifikatmu",
   },
   {
     id: "data",
-    title: "Entering data",
-    description: "Entering all data for the certificate",
+    title: "Masukkan Data",
+    description: "Masukkan semua data untuk sertifikat",
   },
   {
     id: "canvas",
-    title: "Designing on a canvas",
-    description: "drag and drop your data fields",
+    title: "Desain di Kanvas",
+    description: "Seret dan letakkan kolom datamu",
   },
   {
     id: "result",
-    title: "Complete the process",
-    description: "Download your certificate.",
+    title: "Selesaikan Proses",
+    description: "Unduh sertifikatmu.",
   },
 ];
 
 const IMAGE_TYPES = ["image/jpeg", "image/png"];
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 10 MB
-
-/** Opsi unduhan step 4 — tampil sebagai menu setelah tombol Download diklik */
-const DOWNLOAD_OPTIONS: { id: DownloadKind; title: string; desc: string }[] = [
-  {
-    id: "pdf",
-    title: "PDF gabungan",
-    desc: "Semua penerima dalam satu PDF multi-halaman",
-  },
-  {
-    id: "zip-pdf",
-    title: "PDF satuan (ZIP)",
-    desc: "Satu file per penerima — 2026-001_Nama",
-  },
-  {
-    id: "zip-img",
-    title: "Gambar PNG (ZIP)",
-    desc: "Foto per sisi (depan/belakang) per penerima",
-  },
-];
 
 /**
  * Kerangka halaman /certificate (Tahap 2):
@@ -119,8 +110,11 @@ export default function CertificateWizard() {
     () => new Set(),
   );
   const [previewIndex, setPreviewIndex] = useState(0);
-  // Menu 3 opsi unduhan — terbuka saat tombol Download diklik (step 4)
-  const [downloadMenu, setDownloadMenu] = useState(false);
+  // Panel Unduh step 4 — format & kualitas (pilihan inline, tanpa menu popup)
+  const [downloadFormat, setDownloadFormat] = useState<DownloadKind>("pdf");
+  const [quality, setQuality] = useState<QualityLevel>(DEFAULT_QUALITY);
+  // Progres generate (per baris) → progress bar & hitung mundur di panel
+  const [progress, setProgress] = useState<GenerateProgress | null>(null);
 
   // Persistence (Tahap 7) — refresh TIDAK menghapus data; hapus hanya via Delete Data
   const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
@@ -143,6 +137,12 @@ export default function CertificateWizard() {
   const restoredRef = useRef(false);
   const draftRef = useRef<DraftState | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const stepContentRef = useRef<HTMLDivElement>(null);
+
+  // Transisi antar step — fade-up halus anime.js (tanpa efek bila reduced motion)
+  useAnimationLayoutEffect(() => {
+    return fadeInUp(stepContentRef.current, { y: 10, duration: 360 });
+  }, [step]);
 
   // 1) Pulihkan sesi. Draft dibaca sinkron di effect ini (sebelum save boleh
   //    menulis), diterapkan pada microtask → tidak ada setState sinkron di
@@ -177,6 +177,21 @@ export default function CertificateWizard() {
           if (typeof draft.fileNameColumn === "string") {
             setFileNameColumn(draft.fileNameColumn);
           }
+          // Format & kualitas (opsional — draft lama tetap default)
+          if (
+            draft.downloadFormat === "pdf" ||
+            draft.downloadFormat === "zip-pdf" ||
+            draft.downloadFormat === "zip-img"
+          ) {
+            setDownloadFormat(draft.downloadFormat);
+          }
+          if (
+            draft.quality === "normal" ||
+            draft.quality === "hd" ||
+            draft.quality === "4k"
+          ) {
+            setQuality(draft.quality);
+          }
           setSource(draft.source);
           setSheetUrl(draft.sheetUrl);
           setHeaders(draft.headers);
@@ -210,6 +225,8 @@ export default function CertificateWizard() {
       previewIndex,
       excludedRows: [...excludedRows],
       fileNameColumn,
+      downloadFormat,
+      quality,
     };
     saveTimerRef.current = setTimeout(() => {
       if (isPurging()) return;
@@ -235,6 +252,8 @@ export default function CertificateWizard() {
     previewIndex,
     excludedRows,
     fileNameColumn,
+    downloadFormat,
+    quality,
   ]);
 
   // 3) Flush sesi terakhir saat refresh/tab ditutup (pagehide) dan unmount
@@ -279,6 +298,13 @@ export default function CertificateWizard() {
     if (image) URL.revokeObjectURL(image);
     setImageInfo({ name: file.name, size: file.size });
     setImage(URL.createObjectURL(file));
+    // Riwayat di dashboard (IndexedDB) — diam, gagal simpan bukan fatal
+    void saveTemplateRecord({
+      side: "front",
+      name: file.name,
+      size: file.size,
+      blob: file,
+    });
     // Siapkan versi data URL untuk auto-save (di-resize bila muat kuota)
     void toPersistableImage(file)
       .then(setImageDataUrl)
@@ -297,6 +323,12 @@ export default function CertificateWizard() {
     setImageBack(URL.createObjectURL(file));
     // Tampilan berpindah ke belakang agar hasil upload langsung terlihat
     setTemplateSide("back");
+    void saveTemplateRecord({
+      side: "back",
+      name: file.name,
+      size: file.size,
+      blob: file,
+    });
     void toPersistableImage(file)
       .then(setImageDataUrlBack)
       .catch(() => setImageDataUrlBack(null));
@@ -339,7 +371,16 @@ export default function CertificateWizard() {
     setDataError(null);
     setDataLoading(true);
     try {
-      applySheetData(parseCsv(await file.text()));
+      const table = parseCsv(await file.text());
+      applySheetData(table);
+      // Riwayat di dashboard — nama file CSV hanya dicatat di sini
+      void saveDatasetRecord({
+        source: "csv",
+        name: file.name,
+        size: file.size,
+        rows: table.rows.length,
+        blob: file,
+      });
     } catch (err) {
       setDataError(
         err instanceof Error ? err.message : "Gagal membaca file CSV.",
@@ -380,7 +421,14 @@ export default function CertificateWizard() {
           "Link mengembalikan halaman, bukan data. Bagikan sheet sebagai “Anyone with the link”.",
         );
       }
-      applySheetData(parseCsv(text));
+      const table = parseCsv(text);
+      applySheetData(table);
+      // Riwayat di dashboard (link + jumlah baris; tanpa file)
+      void saveDatasetRecord({
+        source: "sheets",
+        url: link,
+        rows: table.rows.length,
+      });
     } catch (err) {
       // Respons privat/tanpa ACAO diblokir CORS → fetch melempar TypeError
       setDataError(
@@ -453,16 +501,21 @@ export default function CertificateWizard() {
     setFields((prev) => prev.filter((field) => field.id !== id));
   };
 
-  // Pra-load font saat pertama masuk step 4 — preview & PDF konsisten
+  // Pra-load font saat pertama masuk step 4 — preview & PDF konsisten.
+  // Semua kombinasi keluarga × berat × gaya (italic terpisah dari bold),
+  // sehingga toggle di panel canvas langsung tampil benar saat dirender.
   useEffect(() => {
     if (step !== 3 || phase !== "preparing") return;
     let cancelled = false;
-    Promise.all(
-      FONT_CHOICES.map((choice) =>
-        document.fonts
-          .load(`${choice.weight} 32px ${fontStack(choice.family)}`)
-          .catch(() => {}),
+    const specs = FONT_FAMILIES.flatMap((family) =>
+      ([400, 700] as const).flatMap((weight) =>
+        (["normal", "italic"] as const).map((style) =>
+          fontSpec(style, weight, family),
+        ),
       ),
+    );
+    Promise.all(
+      specs.map((spec) => document.fonts.load(spec).catch(() => {})),
     )
       .catch(() => {})
       .finally(() => {
@@ -503,27 +556,49 @@ export default function CertificateWizard() {
     setTimeout(() => URL.revokeObjectURL(url), 60_000);
   };
 
-  // Opsi 1 — PDF gabungan multi-halaman (primary "Download" di action bar)
+  // Opsi 1 — PDF gabungan multi-halaman (primary "Unduh" di action bar)
   const handleGeneratePdf = async () => {
     if (!image || phase === "generating" || selectedCount === 0) return;
     const chosen = chosenRows();
+    const startedAt = performance.now();
     setPhase("generating");
     setResultError(null);
+    setProgress({ done: 0, total: chosen.length, startedAt });
     try {
       const doc = await buildCertificatePdf({
         frontUrl: image,
         backUrl: imageBack,
         fields,
         rows: chosen,
+        quality,
+        onProgress: (done, total) =>
+          setProgress({ done, total, startedAt }),
       });
       const fileName = `certificate-${new Date().toISOString().slice(0, 10)}.pdf`;
-      doc.save(fileName);
+      const blob = doc.output("blob");
+      downloadBlob(blob, fileName);
+      // Riwayat di dashboard — blob yang sama diunduh & disimpan
+      void saveResultRecord({
+        output: "pdf",
+        fileName,
+        files: 1,
+        pages: chosen.length * (imageBack ? 2 : 1),
+        blob,
+      });
+      // Kecepatan aktual → dasar estimasi berikutnya
+      recordMsPerRow(
+        quality,
+        "pdf",
+        (performance.now() - startedAt) / Math.max(1, chosen.length),
+      );
 
       setLastOutput("pdf");
       setPhase("done");
     } catch (err) {
       setResultError(err instanceof Error ? err.message : "Gagal membuat PDF.");
       setPhase("error");
+    } finally {
+      setProgress(null);
     }
   };
 
@@ -531,8 +606,10 @@ export default function CertificateWizard() {
   const handleDownloadSatuan = async () => {
     if (!image || phase === "generating" || selectedCount === 0) return;
     const chosen = chosenRows();
+    const startedAt = performance.now();
     setPhase("generating");
     setResultError(null);
+    setProgress({ done: 0, total: chosen.length, startedAt });
     try {
       const used = new Set<string>();
       const entries: ZipEntry[] = [];
@@ -542,6 +619,7 @@ export default function CertificateWizard() {
           backUrl: imageBack,
           fields,
           rows: [row],
+          quality,
         });
         const name = uniqueFileName(
           `${buildFileName(effectiveFileNameColumn, row, index)}.pdf`,
@@ -551,23 +629,46 @@ export default function CertificateWizard() {
           name,
           data: new Uint8Array(doc.output("arraybuffer")),
         });
+        setProgress({ done: index + 1, total: chosen.length, startedAt });
+        // Beri giliran browser → progress bar & hitung mundur sempat dirender
+        await new Promise((resolve) => setTimeout(resolve, 0));
       }
       if (entries.length === 1) {
         // Cuma satu file → langsung unduh, tidak perlu ZIP
-        downloadBlob(
-          new Blob([entries[0].data], { type: "application/pdf" }),
-          entries[0].name,
-        );
+        const blob = new Blob([entries[0].data], { type: "application/pdf" });
+        downloadBlob(blob, entries[0].name);
+        void saveResultRecord({
+          output: "zip-pdf",
+          fileName: entries[0].name,
+          files: 1,
+          pages: imageBack ? 2 : 1,
+          blob,
+        });
       } else {
-        downloadBlob(createZip(entries), "pdf-satuan.zip");
+        const blob = createZip(entries);
+        downloadBlob(blob, "pdf-satuan.zip");
+        void saveResultRecord({
+          output: "zip-pdf",
+          fileName: "pdf-satuan.zip",
+          files: entries.length,
+          pages: chosen.length * (imageBack ? 2 : 1),
+          blob,
+        });
       }
       setLastOutput("zip-pdf");
+      recordMsPerRow(
+        quality,
+        "zip-pdf",
+        (performance.now() - startedAt) / Math.max(1, chosen.length),
+      );
       setPhase("done");
     } catch (err) {
       setResultError(
         err instanceof Error ? err.message : "Gagal membuat PDF satuan.",
       );
       setPhase("error");
+    } finally {
+      setProgress(null);
     }
   };
 
@@ -575,8 +676,10 @@ export default function CertificateWizard() {
   const handleDownloadImages = async () => {
     if (!image || phase === "generating" || selectedCount === 0) return;
     const chosen = chosenRows();
+    const startedAt = performance.now();
     setPhase("generating");
     setResultError(null);
+    setProgress({ done: 0, total: chosen.length, startedAt });
     try {
       const used = new Set<string>();
       const entries: ZipEntry[] = [];
@@ -587,6 +690,7 @@ export default function CertificateWizard() {
           backUrl: imageBack,
           fields,
           row,
+          quality,
         });
         for (const { side, blob } of pngs) {
           const suffix = imageBack
@@ -599,23 +703,40 @@ export default function CertificateWizard() {
             data: new Uint8Array(await blob.arrayBuffer()),
           });
         }
+        setProgress({ done: index + 1, total: chosen.length, startedAt });
+        // Beri giliran browser → progress bar & hitung mundur sempat dirender
+        await new Promise((resolve) => setTimeout(resolve, 0));
       }
-      downloadBlob(createZip(entries), "gambar-satuan.zip");
+      const zip = createZip(entries);
+      downloadBlob(zip, "gambar-satuan.zip");
+      void saveResultRecord({
+        output: "zip-img",
+        fileName: "gambar-satuan.zip",
+        files: entries.length,
+        pages: entries.length,
+        blob: zip,
+      });
       setLastOutput("zip-img");
+      recordMsPerRow(
+        quality,
+        "zip-img",
+        (performance.now() - startedAt) / Math.max(1, chosen.length),
+      );
       setPhase("done");
     } catch (err) {
       setResultError(
         err instanceof Error ? err.message : "Gagal membuat gambar ZIP.",
       );
       setPhase("error");
+    } finally {
+      setProgress(null);
     }
   };
 
-  /** Pilih opsi dari menu Download → tutup menu, jalankan handler-nya */
-  const runDownload = (kind: DownloadKind) => {
-    setDownloadMenu(false);
-    if (kind === "pdf") void handleGeneratePdf();
-    else if (kind === "zip-pdf") void handleDownloadSatuan();
+  /** Primary action step 4 — langsung generate format yang dipilih di panel */
+  const runDownload = () => {
+    if (downloadFormat === "pdf") void handleGeneratePdf();
+    else if (downloadFormat === "zip-pdf") void handleDownloadSatuan();
     else void handleDownloadImages();
   };
 
@@ -635,8 +756,8 @@ export default function CertificateWizard() {
       setStep(step + 1);
       return;
     }
-    // Step 4 — klik Download membuka menu 3 opsi; generate setelah user memilih
-    setDownloadMenu((open) => !open);
+    // Step 4 — langsung generate format yang dipilih (panel inline, tanpa menu)
+    runDownload();
   };
 
   // Action bar kiri: step template → tambah/hapus tampilan belakang;
@@ -669,7 +790,6 @@ export default function CertificateWizard() {
         size="sm"
         iconLeft={<ChevronRightIcon className="size-4 rotate-180" />}
         onClick={() => {
-          setDownloadMenu(false);
           setStep(step - 1);
         }}
       >
@@ -747,31 +867,27 @@ export default function CertificateWizard() {
             headers={headers}
             fileNameColumn={effectiveFileNameColumn}
             onFileNameColumnChange={setFileNameColumn}
+            downloadFormat={downloadFormat}
+            onDownloadFormatChange={setDownloadFormat}
+            quality={quality}
+            onQualityChange={setQuality}
+            progress={progress}
           />
         );
     }
   })();
 
   return (
-    <div className="flex min-h-screen flex-col bg-indigo-surface">
+    // h-dvh: tinggi layar penuh → halaman TIDAK digulir; yang bergulir hanya
+    // isi step (lihat area overflow-y-auto di dalam kartu)
+    <div className="flex h-dvh flex-col bg-indigo-surface">
       <Navbar />
 
       {/* Layar selayar untuk layar <768px (HP portrait) — cukup dirotot, web langsung tampil */}
-      <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-5 bg-surface px-8 text-center md:hidden">
-        <RotateIcon className="size-12 text-primary" />
-        <div className="flex flex-col gap-2">
-          <p className="text-title text-ink">
-            Please rotate your device or use a laptop
-          </p>
-          <p className="text-body text-ink-muted">
-            Silakan rotasikan perangkat ini atau buka di laptop untuk
-            menggunakan web.
-          </p>
-        </div>
-      </div>
+      <RotateGate />
 
-      <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-4 md:px-6">
-        <section className="relative rounded-container border border-line bg-surface p-5 shadow-card">
+      <main className="mx-auto flex w-full max-w-7xl min-h-0 flex-1 flex-col px-4 py-4 short:py-2 md:px-6">
+        <section className="relative flex min-h-0 flex-1 flex-col rounded-container border border-line bg-surface p-5 shadow-card short:p-3">
           <button
             type="button"
             aria-label="Bantuan"
@@ -781,50 +897,27 @@ export default function CertificateWizard() {
             ?
           </button>
 
-          <div className="flex gap-5 lg:gap-10">
-            <aside className="w-52 shrink-0 lg:w-70">
+          {/* Step nav di kiri TIDAK ikut scroll — hanya isi step (kolom kanan)
+              yang bergulir; action bar & footer menempel di luar area scroll */}
+          <div className="flex min-h-0 flex-1 gap-5 lg:gap-10">
+            <aside className="w-52 shrink-0 short:w-44 lg:w-70">
               <StepNav steps={STEPS} current={step} />
             </aside>
 
-            <div className="flex min-h-115 min-w-0 flex-1 flex-col">
-              <div className="flex flex-1 flex-col">{stepContent}</div>
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+              {/* Satu-satunya area scroll di layar ini; konten di-fade-up
+                  tiap ganti step (anime.js, dilewati bila reduced motion) */}
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1">
+                <div ref={stepContentRef} className="flex min-h-full flex-col">
+                  {stepContent}
+                </div>
+              </div>
 
-              {/* Action bar: aksi sekunder kiri, satu primary action kanan */}
-              <div className="mt-6 flex flex-wrap items-center justify-between gap-4 md:mt-8">
+              {/* Action bar: aksi sekunder kiri, satu primary action kanan —
+                  selalu terlihat (di luar area scroll) */}
+              <div className="mt-6 flex flex-wrap items-center justify-between gap-4 short:mt-3 md:mt-8">
                 <div>{secondaryAction}</div>
                 <div className="relative">
-                  {/* Menu 3 opsi unduhan — terbuka di atas tombol Download */}
-                  {step === STEPS.length - 1 && downloadMenu && (
-                    <>
-                      <div
-                        aria-hidden
-                        className="fixed inset-0 z-30"
-                        onClick={() => setDownloadMenu(false)}
-                      />
-                      <div
-                        role="menu"
-                        aria-label="Pilihan unduhan"
-                        className="absolute bottom-full right-0 z-40 mb-2 w-72 rounded-control border border-line bg-surface p-1 shadow-card"
-                      >
-                        {DOWNLOAD_OPTIONS.map((option) => (
-                          <button
-                            key={option.id}
-                            type="button"
-                            role="menuitem"
-                            onClick={() => runDownload(option.id)}
-                            className="flex w-full flex-col gap-0.5 rounded-chip px-3 py-2 text-left transition hover:bg-surface-subtle"
-                          >
-                            <span className="text-label text-ink">
-                              {option.title}
-                            </span>
-                            <span className="text-body text-ink-muted">
-                              {option.desc}
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    </>
-                  )}
                   <Button
                     variant="primary"
                     size="md"
@@ -843,8 +936,8 @@ export default function CertificateWizard() {
                   >
                     {step === STEPS.length - 1
                       ? phase === "generating"
-                        ? "Generating..."
-                        : "Download"
+                        ? "Sedang membuat..."
+                        : DOWNLOAD_BUTTON_LABEL[downloadFormat]
                       : "Lanjutkan"}
                   </Button>
                 </div>
@@ -852,7 +945,7 @@ export default function CertificateWizard() {
             </div>
           </div>
 
-          <Footer className="mt-6" />
+          <Footer className="mt-6 short:mt-3" />
         </section>
       </main>
 

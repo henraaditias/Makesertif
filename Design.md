@@ -44,12 +44,15 @@ Font utama: Inter
 css code
 font-family: "Inter", system-ui, sans-serif;
 Style	Ukuran	Weight	Penggunaan
+Display title	36px	Bold 700	Judul besar: hero halaman utama dan halaman privacy
 Product title	24px	Bold 700	Nama produk
 Supporting title	20px	Bold 700	Heading pendukung
 Section title	16px	Bold 700	Judul step dan tombol
 Body text	12px	Regular 400	Deskripsi dan helper text
 Compact label	12px	Bold 700	Tab, field, dan chip
 Gunakan hanya weight Regular dan Bold. Letter spacing menggunakan 0.
+
+Teks field sertifikat memakai aturan terpisah dari tipografi UI: keluarga font dipilih dari daftar (Inter, Times New Roman, Georgia), lalu gaya ditentukan oleh dua toggle terpisah — **Tebal (Bold)** dan **Miring (Italic)** — sehingga satu keluarga bisa reguler, tebal, miring, atau keduanya; ditambah perataan kiri/tengah/kanan. Gaya yang sama dipakai di kanvas editor, preview step 4, dan hasil PDF/PNG.
 
 Spacing
 Sistem spacing menggunakan basis 4px:
@@ -80,10 +83,10 @@ box-shadow: 0 4px 12px rgb(17 24 39 / 8%);
 Pola Komponen
 Navigation Step
 Tampilan vertikal di sisi kiri kartu utama, terdiri dari 4 step:
-1. Certificate Template — Upload your certificate design
-2. Entering data — Entering all data for the certificate
-3. Designing on a canvas — drag and drop your data fields
-4. Complete the process — Download your certificate.
+1. Template Sertifikat — Unggah desain sertifikatmu
+2. Masukkan Data — Masukkan semua data untuk sertifikat
+3. Desain di Kanvas — Seret dan letakkan kolom datamu
+4. Selesaikan Proses — Unduh sertifikatmu.
 Step aktif menggunakan indigo, step pending menggunakan abu-abu, dihubungkan garis tipis
 Judul step: Bold 16px
 Deskripsi step: Regular 12px
@@ -109,15 +112,23 @@ Focus menggunakan border biru
 Navbar
 Background putih
 Brand GenerateCertificate di kiri
-Tombol Delete Data (ikon database) di sisi kanan — mereset localStorage (draft, log, PDF) dengan konfirmasi
+Tombol Dashboard (outlined, ikon grid, menuju /dashboard) dan tombol Hapus Data (ikon database) di sisi kanan — Hapus Data mereset localStorage sesi membuat sertifikat (draft + key legacy) dengan konfirmasi; data Dashboard tidak ikut terhapus
+Di halaman /dashboard tombol Dashboard disembunyikan otomatis — navbar hanya berisi Hapus Data
 Sederhana dan tidak mengganggu workflow
 Layout Halaman (/certificate)
 Latar halaman: Indigo Surface (#F5F7FF)
-Konten utama: kartu putih besar radius 12px berisi step nav di kiri dan area konten di kanan
+Konten utama: kartu putih besar radius 12px berisi step nav di kiri dan area konten di kanan. Tinggi kartu = viewport (h-dvh): **step nav dan action bar tidak ikut scroll — hanya isi step (upload data, kanvas, preview, dll.) yang bergulir**, sehingga tombol Lanjutkan/Unduh selalu terlihat
 Ikon bantuan (?) di pojok kanan atas kartu
-Action bar di bawah kartu: aksi sekunder di kiri (Tambahkan/Hapus tampilan belakang di step template, Sebelumnya di step berikutnya), satu primary action di kanan (Lanjutkan atau Download — di step 4 Download membuka menu 3 opsi unduhan)
-Catatan privasi di bawah kartu: "All certificates and recipient data stay in your browser. Nothing is permanently stored on our servers." + link Privacy policy
+Action bar di bawah kartu: aksi sekunder di kiri (Tambahkan/Hapus tampilan belakang di step template, Sebelumnya di step berikutnya), satu primary action di kanan (Lanjutkan atau Unduh — di step 4 Unduh membuka menu 3 opsi unduhan)
+Catatan privasi di bawah kartu: "Semua sertifikat dan data penerima tetap di browser kamu. Tidak ada yang disimpan permanen di server kami." + link Privacy policy
 Ikon ? dan catatan privasi muncul di semua step
+Layout Halaman Utama (/)
+MASIH PLACEHOLDER KOSONG — konten lengkap menyusul setelah didiskusikan (mockup referensi ada di folder rev/)
+Latar halaman: Indigo Surface (#F5F7FF) — sama seperti wizard
+Isi saat ini: navbar (tanpa tombol Hapus Data) + judul produk + pesan singkat + link ke /certificate + footer
+Halaman /privacy juga placeholder kosong (judul + pesan singkat); link Privacy policy di footer tetap mengarah ke sana
+Halaman responsif (termasuk layar <768px) — overlay layar selayar hanya untuk /certificate dan /dashboard; di layar pendek (HP dirotot, tinggi ≤500px) wizard & dashboard dikompakkan otomatis lewat varian short: padding/min-height ramping, panel properti kanvas pindah ke samping canvas dengan scroll sendiri, tinggi gambar canvas/preview mengikuti viewport (dvh)
+Bahasa konten halaman utama & Privacy policy: Indonesia
 Alur Produk
 Upload desain sertifikat (JPG atau PNG, maksimal 10 MB) — satu preview sisi aktif: Depan wajib, Belakang opsional
 Ganti gambar = klik preview; pindah sisi = toggle Depan/Belakang di bawah preview (posisi & gaya toggle File CSV); tambah/hapus template belakang = tombol sekunder di action bar
@@ -125,19 +136,20 @@ Masukkan data lewat toggle File CSV atau Google Sheets
 CSV: upload file
 Google Sheets: paste link publik, data diambil otomatis
 Preview data dalam tabel
-Atur field teks di canvas (drag and drop, tab sisi Depan/Belakang, ubah lebar teks via handle kanan-bawah, properti font: size, family, color picker + hex/rgb)
+Atur field teks di canvas (drag and drop, toggle sisi Depan/Belakang di bawah kanvas, ubah lebar teks via handle kanan-bawah, properti font: size, jenis font (keluarga saja), gaya teks lewat toggle Tebal & Miring yang terpisah — bisa keduanya, salah satu, atau tidak sama sekali — perataan kiri/tengah/kanan, color picker + hex/rgb). Field tidak pernah bisa digeser melewati tepi foto (lebar default dijaga minimal 5%, tepi kanan `x + width ≤ 100`, tepi bawah `y + tinggi kotak ≤ 100` — dikunci ulang otomatis setelah ukuran font/kolom berubah)
 Menampilkan loading state
-Preview sertifikat per baris (tab sisi bila ada template belakang), pilih kolom nama file, lalu klik Download → menu 3 opsi unduhan muncul
+Preview sertifikat per baris (toggle sisi Depan/Belakang di bawah preview bila ada template belakang), pilih kolom nama file, lalu klik Unduh → menu 3 opsi unduhan muncul
 Setiap layar sebaiknya hanya memiliki satu primary action yang paling menonjol.
 
 Keputusan Produk
 Tanpa login dan tanpa backend; semua proses berjalan di browser
-3 opsi unduhan — semuanya dari menu tombol primary Download: PDF gabungan multi-halaman (A4 landscape), PDF satuan per sertifikat (ZIP), dan Gambar PNG (ZIP) — ZIP ditulis sendiri tanpa dependency baru; nama file `2026-001_Nama` (tahun - nomor urut per unduhan - kolom pilihan user)
+3 opsi unduhan — semuanya dari menu tombol primary Unduh: PDF gabungan multi-halaman (A4 landscape), PDF satuan per sertifikat (ZIP), dan Gambar PNG (ZIP) — ZIP ditulis sendiri tanpa dependency baru; nama file `2026-001_Nama` (tahun - nomor urut per unduhan - kolom pilihan user)
 Elemen yang bisa ditempel di canvas: teks dinamis (field) dari kolom data saja, ditempatkan per sisi template (depan/belakang) — tanpa gambar, tanda tangan, atau QR
 Sesi kerja disimpan di localStorage:
 gc:draft — sesi kerja (step aktif, link data, konfigurasi field termasuk lebar, kedua template, kolom nama file)
-gc:history / gc:pdfs — peninggalan fitur History yang sudah dihapus (tampilan & penulisan); key lama tetap ikut dibersihkan Delete Data
-Tombol Delete Data mereset ketiga key dengan konfirmasi
+gc:history / gc:pdfs — peninggalan fitur History yang sudah dihapus (tampilan & penulisan); key lama tetap ikut dibersihkan tombol Hapus Data
+Tombol Hapus Data di wizard mereset ketiga key localStorage dengan konfirmasi (tidak menyentuh data Dashboard)
+Dashboard /dashboard — riwayat file (template, CSV, hasil unduhan) di IndexedDB terpisah dari localStorage: semua item bisa diunduh ulang, dihapus otomatis setelah 24 jam (banner masa simpan + countdown per item + pemberitahuan saat data lama terhapus), dan punya tombol Hapus Data sendiri yang tidak memengaruhi sesi membuat sertifikat
 UI light-only: tanpa varian dark mode
 
 Prinsip Utama
@@ -179,6 +191,7 @@ border-line-strong	#D1D5DB	Border input
 bg-placeholder	#D9D9D9	Area kosong
 Typography
 Token utility	Ukuran	Weight	Penggunaan
+text-display	36px	700	Judul besar: hero halaman utama & halaman privacy
 text-title	24px	700	Product title
 text-subtitle	20px	700	Supporting title
 text-section	16px	700	Section title dan tombol

@@ -4,15 +4,11 @@ import type {
   FieldConfig,
   TemplateSide,
 } from "@/components/flow/types";
-import { fieldSide } from "@/components/flow/types";
-import { fontStack } from "./fonts";
+import { fieldAlign, fieldItalic, fieldSide } from "@/components/flow/types";
+import { fontSpec, fontStack } from "./fonts";
 import { wrapLines } from "./text-wrap";
-
-/** Render A4 landscape pada 150 DPI → 1754×1240 px per halaman */
-const PDF_DPI = 150;
-const PAGE_W_MM = 297;
-const PAGE_H_MM = 210;
-const MM_PER_INCH = 25.4;
+import { A4_H_MM, A4_W_MM, DEFAULT_QUALITY, qualityPixels } from "./quality";
+import type { QualityLevel } from "@/components/flow/types";
 
 export interface CertificatePdfInput {
   /** Object URL template depan (wajib) */
@@ -22,6 +18,16 @@ export interface CertificatePdfInput {
   fields: FieldConfig[];
   /** Baris terpilih saja, urut seperti aslinya — per baris: depan (→ belakang) */
   rows: DataRow[];
+  /**
+   * Kualitas render (dpi kanvas per halaman) — default HD.
+   * Lihat `app/lib/quality.ts`: normal=200 dpi, hd=400 dpi, 4k=lebar 3840 px.
+   */
+  quality?: QualityLevel;
+  /**
+   * Dipanggil tiap baris selesai dirender → dipakai progress bar &
+   * hitung mundur estimasi di step 4. (`done` 1-based.)
+   */
+  onProgress?: (done: number, total: number) => void;
 }
 
 /** Hasil render PNG per sisi — dipakai opsi "Gambar (ZIP)" */
@@ -52,11 +58,13 @@ export async function buildCertificatePdf({
   backUrl,
   fields,
   rows,
+  quality = DEFAULT_QUALITY,
+  onProgress,
 }: CertificatePdfInput): Promise<jsPDF> {
   await loadFontsUsed(fields);
   const front = await loadImage(frontUrl);
   const back = backUrl ? await loadImage(backUrl) : null;
-  const { canvas, ctx, pxW, pxH } = createPageCanvas();
+  const { canvas, ctx, pxW, pxH } = createPageCanvas(quality);
 
   const frontFields = fields.filter((f) => fieldSide(f) === "front");
   const backFields = back
@@ -69,11 +77,11 @@ export async function buildCertificatePdf({
     format: "a4",
   });
 
-  rows.forEach((row, index) => {
+  for (const [index, row] of rows.entries()) {
     if (index > 0) pdf.addPage("a4", "landscape");
 
     drawSide(ctx, front, frontFields, row, pxW, pxH);
-    pdf.addImage(canvas, "JPEG", 0, 0, PAGE_W_MM, PAGE_H_MM, undefined, "FAST");
+    pdf.addImage(canvas, "JPEG", 0, 0, A4_W_MM, A4_H_MM, undefined, "FAST");
 
     if (back) {
       pdf.addPage("a4", "landscape");
@@ -83,31 +91,48 @@ export async function buildCertificatePdf({
         "JPEG",
         0,
         0,
-        PAGE_W_MM,
-        PAGE_H_MM,
+        A4_W_MM,
+        A4_H_MM,
         undefined,
         "FAST",
       );
     }
-  });
+
+    onProgress?.(index + 1, rows.length);
+    // Beri giliran browser tiap baris → progress bar & hitung mundur sempat
+    // dirender (render ini sinkron dan bisa lama di kualitas HD/4K)
+    await nextPaint();
+  }
 
   return pdf;
 }
 
+/** Tunggu frame berikutnya — melepas main thread ke browser untuk paint */
+function nextPaint(): Promise<void> {
+  return new Promise((resolve) => {
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(() => resolve());
+    } else {
+      setTimeout(resolve, 0);
+    }
+  });
+}
+
 /**
  * Render satu baris jadi PNG per sisi (depan, dan belakang bila ada).
- * Ukuran piksel = halaman A4 150 DPI — sama dengan render PDF.
+ * Ukuran piksel = halaman A4 pada kualitas terpilih (lihat lib/quality).
  */
 export async function renderRowPngs({
   frontUrl,
   backUrl,
   fields,
   row,
+  quality = DEFAULT_QUALITY,
 }: Omit<CertificatePdfInput, "rows"> & { row: DataRow }): Promise<RowPng[]> {
   await loadFontsUsed(fields);
   const front = await loadImage(frontUrl);
   const back = backUrl ? await loadImage(backUrl) : null;
-  const { canvas, ctx, pxW, pxH } = createPageCanvas();
+  const { canvas, ctx, pxW, pxH } = createPageCanvas(quality);
 
   const out: RowPng[] = [];
 
@@ -136,10 +161,9 @@ export async function renderRowPngs({
   return out;
 }
 
-/** Kanvas halaman A4 landscape 150 DPI + konteks 2D */
-function createPageCanvas(): PageCanvas {
-  const pxW = Math.round((PAGE_W_MM / MM_PER_INCH) * PDF_DPI);
-  const pxH = Math.round((PAGE_H_MM / MM_PER_INCH) * PDF_DPI);
+/** Kanvas halaman A4 landscape sesuai kualitas + konteks 2D */
+function createPageCanvas(quality: QualityLevel): PageCanvas {
+  const { pxW, pxH } = qualityPixels(quality);
   const canvas = document.createElement("canvas");
   canvas.width = pxW;
   canvas.height = pxH;
@@ -176,15 +200,24 @@ function drawSide(
     const text = row[field.columnKey] ?? "";
     if (!text) continue;
     const fontSize = field.fontSize * scale;
-    ctx.font = `${field.fontWeight} ${fontSize}px ${fontStack(field.fontFamily)}`;
+    // Gaya teks: italic & bold terpisah — string font canvas (mis. "italic 700 32px …")
+    ctx.font = `${fieldItalic(field) ? "italic " : ""}${field.fontWeight} ${fontSize}px ${fontStack(field.fontFamily)}`;
     ctx.fillStyle = field.color;
-    ctx.textAlign = "left";
     ctx.textBaseline = "top";
-    const x = drawX + (field.x / 100) * drawW;
+    const align = fieldAlign(field);
+    ctx.textAlign = align;
+    // Titik gambar mengikuti perataan agar tetap di dalam kotak yang sama
+    const boxX = drawX + (field.x / 100) * drawW;
     // Lebar kotak: handle user (field.width) atau sisa ruang ke tepi kanan —
     // konsisten dengan `width` di DOM canvas & preview
     const widthPct = field.width ?? 100 - field.x;
     const maxWidth = (widthPct / 100) * drawW;
+    const x =
+      align === "center"
+        ? boxX + maxWidth / 2
+        : align === "right"
+          ? boxX + maxWidth
+          : boxX;
     const lines = wrapLines(
       (s) => ctx.measureText(s).width,
       text,
@@ -212,8 +245,11 @@ function canvasToPng(canvas: HTMLCanvasElement): Promise<Blob> {
 /** Font web (Inter) harus sudah ter-load sebelum digambar ke canvas */
 async function loadFontsUsed(fields: FieldConfig[]) {
   if (typeof document === "undefined" || !document.fonts) return;
+  // Spec per gaya yang benar-benar dipakai (italic & bold terpisah)
   const specs = new Set(
-    fields.map((field) => `${field.fontWeight} 32px ${fontStack(field.fontFamily)}`),
+    fields.map((field) =>
+      fontSpec(field.fontStyle ?? "normal", field.fontWeight, field.fontFamily),
+    ),
   );
   await Promise.all(
     [...specs].map((spec) => document.fonts.load(spec).catch(() => {})),

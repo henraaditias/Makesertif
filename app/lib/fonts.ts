@@ -1,20 +1,28 @@
 export type FontWeight = 400 | 700;
 
-export interface FontChoice {
-  family: string;
-  weight: FontWeight;
-  label: string;
-}
+/** Gaya teks — dipakai bersama `fontWeight`, keduanya toggle terpisah di panel canvas */
+export type FontStyle = "normal" | "italic";
 
-/** Opsi Font Family (gaya select di mockup: "Inter Normal") */
-export const FONT_CHOICES: FontChoice[] = [
-  { family: "Inter", weight: 400, label: "Inter Normal" },
-  { family: "Inter", weight: 700, label: "Inter Bold" },
-  { family: "Times New Roman", weight: 400, label: "Times New Roman Normal" },
-  { family: "Times New Roman", weight: 700, label: "Times New Roman Bold" },
-  { family: "Georgia", weight: 400, label: "Georgia Normal" },
-  { family: "Georgia", weight: 700, label: "Georgia Bold" },
-];
+/**
+ * Keluarga font pilihan panel canvas.
+ * Dulu tiap keluarga punya 2 opsi gabungan ("Inter Normal"/"Inter Bold");
+ * sekarang keluarga dipilih lewat select, sedangkan berat (Tebal) & Italic
+ * adalah dua tombol toggle terpisah → 1 keluarga bisa normal/italic/bold/keduanya.
+ */
+export const FONT_FAMILIES = ["Inter", "Times New Roman", "Georgia"] as const;
+
+/**
+ * Spec `document.fonts.load` untuk satu keluarga — memuat varian italic juga
+ * sehingga render canvas & PDF/PNG konsisten (Inter italic dari next/font,
+ * Times/Georgia italic dari sistem).
+ */
+export function fontSpec(
+  style: FontStyle,
+  weight: FontWeight,
+  family: string,
+): string {
+  return `${style === "italic" ? "italic " : ""}${weight} 32px ${fontStack(family)}`;
+}
 
 /** Warna teks default field baru — swatch "Ink" (token Design.md) */
 export const DEFAULT_TEXT_COLOR = "#111827";
@@ -29,9 +37,9 @@ export const FONT_COLORS: {
   className: string;
 }[] = [
   { value: DEFAULT_TEXT_COLOR, label: "Ink", className: "bg-ink" },
-  { value: "#FFFFFF", label: "White", className: "bg-surface" },
-  { value: "#EF4444", label: "Red", className: "bg-danger" },
-  { value: "#3B82F6", label: "Blue", className: "bg-accent" },
+  { value: "#FFFFFF", label: "Putih", className: "bg-surface" },
+  { value: "#EF4444", label: "Merah", className: "bg-danger" },
+  { value: "#3B82F6", label: "Biru", className: "bg-accent" },
 ];
 
 const STACKS: Record<string, string> = {

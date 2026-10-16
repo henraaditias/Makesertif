@@ -1,6 +1,7 @@
-import { redirect } from "next/navigation";
+import Landing from "./components/home/landing";
 
-// Landing page menyusul; untuk sekarang langsung ke wizard pembuatan sertifikat.
+// Halaman utama: landing page (Design.md "Layout Halaman Utama").
+// Wizard tetap di /certificate — tombol hero di landing mengarah ke sana.
 export default function Home() {
-  redirect("/certificate");
+  return <Landing />;
 }

@@ -143,3 +143,72 @@ export function RotateIcon(props: IconProps) {
     </svg>
   );
 }
+
+/** Ikon perisai — kartu keunggulan "diproses di browser" / privasi */
+export function ShieldIcon(props: IconProps) {
+  return (
+    <svg {...baseProps} {...props}>
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" />
+      <path d="m9 12 2 2 4-4" />
+    </svg>
+  );
+}
+
+/** Ikon dua lapis — kartu keunggulan template depan & belakang */
+export function LayersIcon(props: IconProps) {
+  return (
+    <svg {...baseProps} {...props}>
+      <path d="m12 2 9 5-9 5-9-5 9-5Z" />
+      <path d="m3 12 9 5 9-5" />
+      <path d="m3 17 9 5 9-5" />
+    </svg>
+  );
+}
+
+/** Perataan teks kiri — kontrol field di panel canvas */
+export function AlignLeftIcon(props: IconProps) {
+  return (
+    <svg {...baseProps} {...props}>
+      <path d="M17 10H3" />
+      <path d="M21 6H3" />
+      <path d="M21 14H3" />
+      <path d="M17 18H3" />
+    </svg>
+  );
+}
+
+/** Perataan teks tengah — kontrol field di panel canvas */
+export function AlignCenterIcon(props: IconProps) {
+  return (
+    <svg {...baseProps} {...props}>
+      <path d="M17 10H7" />
+      <path d="M21 6H3" />
+      <path d="M21 14H3" />
+      <path d="M17 18H7" />
+    </svg>
+  );
+}
+
+/** Perataan teks kanan — kontrol field di panel canvas */
+export function AlignRightIcon(props: IconProps) {
+  return (
+    <svg {...baseProps} {...props}>
+      <path d="M21 10H7" />
+      <path d="M21 6H3" />
+      <path d="M21 14H3" />
+      <path d="M21 18H7" />
+    </svg>
+  );
+}
+
+/** Ikon grid — tombol Dashboard di navbar */
+export function GridIcon(props: IconProps) {
+  return (
+    <svg {...baseProps} {...props}>
+      <rect width="7" height="7" x="3" y="3" rx="1" />
+      <rect width="7" height="7" x="14" y="3" rx="1" />
+      <rect width="7" height="7" x="14" y="14" rx="1" />
+      <rect width="7" height="7" x="3" y="14" rx="1" />
+    </svg>
+  );
+}

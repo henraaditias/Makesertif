@@ -1,15 +1,24 @@
-import type { DataSource, DataRow, FieldConfig } from "@/components/flow/types";
+import type {
+  DataSource,
+  DataRow,
+  FieldConfig,
+  DownloadKind,
+  QualityLevel,
+} from "@/components/flow/types";
 
 /**
  * Key localStorage — harus sama dengan STORAGE_KEYS di navbar (Delete Data).
  * `history`/`pdfs` = peninggalan fitur History yang sudah dihapus;
  * tidak pernah ditulis lagi, tetap dihapus Delete Data & fallback kuota
- * agar data lama user ikut terbersih.
+ * agar data lama user ikut terbersih. `perf` = hasil ukur kecepatan generate
+ * untuk estimasi waktu (diisi ulang otomatis setelah unduhan pertama).
  */
 export const GC_KEYS = {
   draft: "gc:draft",
   history: "gc:history",
   pdfs: "gc:pdfs",
+  /** Hasil ukur kecepatan generate (ms/baris) untuk estimasi waktu step 4 */
+  perf: "gc:perf",
 } as const;
 
 /**
@@ -76,6 +85,12 @@ export interface DraftState {
    * dibiarkan sebagai key asing dan diabaikan.
    */
   fileNameColumn?: string;
+  /**
+   * Format & kualitas unduhan pilihan user (opsional — draft lama = default
+   * `pdf`/`hd`). Disimpan agar pilihan tidak hilang saat refresh.
+   */
+  downloadFormat?: DownloadKind;
+  quality?: QualityLevel;
 }
 
 const DRAFT_VERSION = 1;
