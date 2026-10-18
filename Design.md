@@ -1,4 +1,4 @@
-GenerateCertificate — Design Guide
+Makesertif — Design Guide
 Gaya Desain
 Gaya desain yang digunakan adalah minimal utility interface: bersih, ringan, profesional, dan berfokus pada penyelesaian proses bertahap.
 
@@ -111,7 +111,7 @@ Value Regular 12px
 Focus menggunakan border biru
 Navbar
 Background putih
-Brand GenerateCertificate di kiri
+Brand Makesertif di kiri
 Tombol Dashboard (outlined, ikon grid, menuju /dashboard) dan tombol Hapus Data (ikon database) di sisi kanan — Hapus Data mereset localStorage sesi membuat sertifikat (draft + key legacy) dengan konfirmasi; data Dashboard tidak ikut terhapus
 Di halaman /dashboard tombol Dashboard disembunyikan otomatis — navbar hanya berisi Hapus Data
 Sederhana dan tidak mengganggu workflow
@@ -123,10 +123,14 @@ Action bar di bawah kartu: aksi sekunder di kiri (Tambahkan/Hapus tampilan belak
 Catatan privasi di bawah kartu: "Semua sertifikat dan data penerima tetap di browser kamu. Tidak ada yang disimpan permanen di server kami." + link Privacy policy
 Catatan privasi muncul di semua step (ikon ? sedang disembunyikan sementara)
 Layout Halaman Utama (/)
-MASIH PLACEHOLDER KOSONG — konten lengkap menyusul setelah didiskusikan (mockup referensi ada di folder rev/)
-Latar halaman: Indigo Surface (#F5F7FF) — sama seperti wizard
-Isi saat ini: navbar (tanpa tombol Hapus Data) + judul produk + pesan singkat + link ke /certificate + footer
-Halaman /privacy juga placeholder kosong (judul + pesan singkat); link Privacy policy di footer tetap mengarah ke sana
+SUDAH TERISI — landing lengkap mengikuti mockup `rev/` (All Page.png). Urutan: navbar (tanpa Hapus Data; tombol secondary Dashboard → /dashboard + primary "Buat Sekarang" → /certificate) → hero gradien (kartu sertifikat dari 2 file SVG public/ — sertifikat-1.svg default; interaksi: lensa gradient lembut ikut kursor (mouse saja; mask radial multi-stop — inti pekat memudar alami ke transparan, bukan lingkaran keras) menampilkan sertifikat-2.svg, klik = tampil penuh 5 detik lalu kembali; badge "Gratis Tanpa akun"/"Data tetap di perangkatmu", judul uppercase, CTA ungu tua "Buat Sertifikat Sekarang" → /certificate; hero muat satu layar tanpa scroll — section min-h = viewport − navbar (60px) + justify-center, lebar kartu dibatasi min(…, 56vh/60vh) sehingga CTA tidak pernah di bawah fold, terverifikasi puppeteer di 1366×768 & 1366×600) → section "Cara Kerjanya" (latar primary, placeholder area video, 4 langkah berikon bulat + garis progress) → SATU blok gradien contact-gradient membungkus FAQ akordeon + "Hubungi Kami" (5 pertanyaan; kontak placeholder: email/telepon/alamat/jam operasional; di desktop kolom kanan sejajar: judul top-aligned dengan kartu FAQ pertama, kartu "Hubungi Kami" justify-end sejajar bawah daftar FAQ; section punya id="faq" sebagai anchor) + footer (copyright + Privacy policy + "Kembali ke atas" = BackToTop, klik = gulir halus ke atas via anime.js; footer transparan — warnanya mengikuti gradien blok yang sama)
+Blok gradien FAQ/kontak/footer full-width dengan sudut atas membulat (rounded-t, radius ±24px mengikuti mockup rev/FAQ.png) yang menumpuk ke section ungu "Cara Kerjanya" (-mt) sehingga warna ungu terlihat di notch kedua sudut atas
+Ukuran dikompakkan agar tidak terlalu besar ke layar desktop (keputusan user): lebar konten utama maksimum 1000px (hero) dan 960px (Cara Kerjanya, FAQ); judul hero maksimum 32px; judul section 26–28px; kartu sertifikat 480–520px; area video 560px; grid langkah 880px
+Animasi berjenjang anime.js (dilewati bila reduced motion), tiga timing: (1) saat mount — kartu sertifikat hero pop scale (outBack), badge pill "Gratis Tanpa akun" → "Data tetap di perangkatmu" pop berurutan, judul → subteks → CTA fade-up berurutan; (2) animasi looping permanen — kontainer kartu hero + pill melayang halus (yoyo translateY 0 → −7px, inOutSine 2600 ms, loop Infinity) sebagai satu-satunya gerakan terus-menerus di landing, tetap dilewati bila reduced motion; (3) saat scroll masuk viewport (IntersectionObserver) — garis progress "Cara Kerjanya" tumbuh dari 0 ke 31% ketika grid langkah terlihat, ikon langkah pop + kartu langkah stagger, judul FAQ → tiap item FAQ (stagger) → kolom kontak; footer "Kembali ke atas" menggulir halus ke atas (inOutCubic ±650 ms)
+Urutan mobile section FAQ (< lg): judul "Pertanyaan yang Sering Diajukan" + deskripsi → daftar FAQ → "Hubungi Kami" + kartu kontak (order-*); desktop: FAQ kolom kiri, judul + Hubungi Kami kolom kanan
+Latar halaman: Indigo Surface (#F5F7FF) — sama seperti wizard; gradien hero & section kontak didefinisikan sebagai class di globals.css (.hero-gradient, .contact-gradient, .hero-cta)
+Judul hero & section mengikuti mockup tapi dikompakkan (keputusan user): maksimum 32px di desktop (hero) dan 26–28px (section), Bold 700, tanpa letter-spacing
+Halaman /privacy SUDAH TERISI — kebijakan privasi bahasa Indonesia (`app/components/privacy/privacy.tsx`): navbar sama seperti landing (Dashboard + Buat Sekarang) → hero gradien kompak (label PRIVASI + judul Display 36px "Kebijakan Privasi" rata kiri + subteks + chip "Terakhir diperbarui: 18 Oktober 2026", tanpa CTA) → kartu putih radius 12px menumpuk ke hero (max-width 960px, latar Indigo Surface) berisi kartu ringkasan 4 poin berikon, daftar isi anchor (sidebar sticky di desktop / kartu list di atas konten di mobile), dan 9 bab statis bernomor (pendekatan, data yang diproses — satu-satunya tempat poin tanpa cookie/analytics/tracker, penyimpanan localStorage & IndexedDB, Google Sheets, pihak ketiga, keamanan & masa simpan, hak kamu, perubahan kebijakan, hubungi kami) → blok gradien contact + footer variant landing (sama seperti halaman utama); link Privacy policy di footer mengarah ke sana
 Halaman responsif (termasuk layar <768px) — overlay layar selayar hanya untuk /certificate dan /dashboard; di layar pendek (HP dirotot, tinggi ≤500px) wizard & dashboard dikompakkan otomatis lewat varian short: padding/min-height ramping, panel properti kanvas pindah ke samping canvas dengan scroll sendiri, tinggi gambar canvas/preview mengikuti viewport (dvh)
 Bahasa konten halaman utama & Privacy policy: Indonesia
 Layout Halaman Dashboard (/dashboard)

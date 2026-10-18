@@ -11,9 +11,15 @@ export interface NavbarProps {
   onDeleteData?: () => void;
   /** Sembunyikan tombol Hapus Data (mis. di landing & halaman privacy) */
   showDeleteData?: boolean;
+  /** Tampilkan tombol primary "Buat Sekarang" → /certificate (khusus landing) */
+  showStartCta?: boolean;
 }
 
-const Navbar = ({ onDeleteData, showDeleteData = true }: NavbarProps) => {
+const Navbar = ({
+  onDeleteData,
+  showDeleteData = true,
+  showStartCta = false,
+}: NavbarProps) => {
   const pathname = usePathname();
   const handleDeleteData = () => {
     if (onDeleteData) {
@@ -37,7 +43,7 @@ const Navbar = ({ onDeleteData, showDeleteData = true }: NavbarProps) => {
     <header className="border-b border-line">
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-2 md:px-6">
         <Link href="/">
-          <span className="text-title text-ink">GenerateCertificate</span>
+          <span className="text-title text-ink">Makesertif</span>
         </Link>
         <div className="flex items-center gap-3">
           {/* Di /dashboard tombol Dashboard disembunyikan otomatis —
@@ -50,6 +56,11 @@ const Navbar = ({ onDeleteData, showDeleteData = true }: NavbarProps) => {
               iconLeft={<GridIcon className="size-4" />}
             >
               Dashboard
+            </ButtonLink>
+          )}
+          {showStartCta && (
+            <ButtonLink href="/certificate" variant="primary" size="md">
+              Buat Sekarang
             </ButtonLink>
           )}
           {showDeleteData && (

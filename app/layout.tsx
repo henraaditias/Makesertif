@@ -11,7 +11,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "GenerateCertificate",
+  title: "Makesertif",
   description:
     "Buat sertifikat massal dari template: masukkan data CSV atau Google Sheets, atur field di canvas, lalu download satu PDF multi-halaman. Semua diproses di browser kamu.",
 };

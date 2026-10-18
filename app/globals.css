@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 /*
- * Design tokens — sumber kebenaran: Design.md (GenerateCertificate Design Guide).
+ * Design tokens — sumber kebenaran: Design.md (Makesertif Design Guide).
  * Jangan pakai warna/ukuran hardcoded di komponen; pakai utility dari token ini.
  * Contoh: bg-primary, text-ink, border-line, rounded-control, text-title, shadow-card
  */
@@ -79,4 +79,79 @@ body {
 :focus-visible {
   outline: 2px solid var(--color-focus);
   outline-offset: 1px;
+}
+
+/*
+ * Landing page (/) — gradien & CTA mengikuti mockup rev/ (All Page.png).
+ * Warna gradien ditaruh DI SINI (bukan hardcoded di komponen) sesuai aturan
+ * token; warna ungu mockup (#6262f5) dipetakan ke var(--color-primary).
+ */
+.hero-gradient {
+  background:
+    radial-gradient(
+      ellipse at 17% 37%,
+      rgb(255 255 255 / 72%) 0%,
+      rgb(255 255 255 / 0%) 36%
+    ),
+    radial-gradient(
+      ellipse at 91% 18%,
+      rgb(255 255 255 / 58%) 0%,
+      rgb(255 255 255 / 0%) 31%
+    ),
+    linear-gradient(
+      132deg,
+      #f8f9fb 0%,
+      #c4c6fb 33%,
+      color-mix(in srgb, var(--color-primary) 96%, white) 67%,
+      var(--color-primary) 100%
+    );
+}
+
+.contact-gradient {
+  background:
+    radial-gradient(
+      ellipse at 45% 100%,
+      rgb(124 123 255 / 72%),
+      transparent 52%
+    ),
+    linear-gradient(180deg, #f8f9fb 0%, #f8f9fb 58%, #dcdcff 100%);
+}
+
+/* CTA hero — ungu tua menonjol (mockup), bukan primary biasa */
+.hero-cta {
+  background-color: #4b1e98;
+  color: #fff;
+  transition:
+    background-color 150ms,
+    transform 150ms;
+}
+
+.hero-cta:hover {
+  background-color: #391477;
+  transform: translateY(-2px);
+}
+
+/* Reveal singkat jawaban FAQ saat dibuka (dilewati bila reduced motion) */
+.faq-answer {
+  animation: gc-reveal 0.2s ease-out;
+}
+
+@keyframes gc-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-cta:hover {
+    transform: none;
+  }
+  .faq-answer {
+    animation: none;
+  }
 }

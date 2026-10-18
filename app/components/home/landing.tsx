@@ -1,39 +1,39 @@
-import Link from "next/link";
 import Navbar from "../layout/navbar";
 import Footer from "../layout/footer";
-import FadeIn from "../common/fade-in";
+import Hero from "./hero";
+import HowItWorks from "./how-it-works";
+import FaqContact from "./faq-contact";
 
 /**
- * Halaman utama (/) — MASIH PLACEHOLDER KOSONG (belum dikerjakan).
- * Konten lengkap (hero, Cara Kerja, FAQ, dsb.) menyusul setelah didiskusikan;
- * animasi hanya fade-up singkat anime.js (FadeIn) — tanpa dependency baru
- * selain animejs yang sudah dipakai wizard, dan tanpa efek bila reduced motion.
+ * Halaman utama (/) — landing lengkap mengikuti mockup rev/ (All Page.png):
+ * hero gradien + mock sertifikat, section "Cara Kerjanya" (4 langkah),
+ * lalu SATU blok gradien membungkus FAQ + "Hubungi Kami" + footer
+ * (footer transparan, warnanya = gradien FAQ/kontak) dengan sudut atas
+ * membulat menumpuk ke section ungu di atasnya (rev/FAQ.png).
+ * Animasi berjenjang anime.js (FadeIn); tanpa dependency baru.
  */
 export default function Landing() {
   return (
-    <div className="flex min-h-dvh flex-col bg-indigo-surface">
-      <Navbar showDeleteData={false} />
+    <div
+      id="top"
+      className="flex min-h-dvh flex-col bg-indigo-surface"
+    >
+      <Navbar showDeleteData={false} showStartCta />
 
-      <main className="flex flex-1 items-center justify-center px-4 py-16 text-center">
-        <FadeIn>
-          <div>
-            <h1 className="text-title text-ink">GenerateCertificate</h1>
-            <p className="mx-auto mt-3 max-w-md text-body text-ink-muted">
-              Halaman utama masih dalam penyiapan. Untuk mulai membuat
-              sertifikat massal, buka halaman{" "}
-              <Link
-                href="/certificate"
-                className="text-action underline underline-offset-2 hover:opacity-80"
-              >
-                buat sertifikat
-              </Link>
-              .
-            </p>
-          </div>
-        </FadeIn>
+      <main className="flex-1">
+        <Hero />
+        <HowItWorks />
+        {/*
+          Blok gradien FAQ/kontak + footer (mockup rev/): full-width,
+          `-mt-6` menumpuk ke section ungu supaya ungu terlihat di notch
+          sudut membulat (`rounded-t-[24px]` mengikuti radius mockup);
+          footer di dalam blok ini = transparan, mengikuti gradien.
+        */}
+        <div className="contact-gradient -mt-6 rounded-t-[24px]">
+          <FaqContact />
+          <Footer variant="landing" />
+        </div>
       </main>
-
-      <Footer />
     </div>
   );
 }
