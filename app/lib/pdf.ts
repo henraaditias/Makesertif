@@ -11,26 +11,14 @@ import { A4_H_MM, A4_W_MM, DEFAULT_QUALITY, qualityPixels } from "./quality";
 import type { QualityLevel } from "@/components/flow/types";
 
 export interface CertificatePdfInput {
-  /** Object URL template depan (wajib) */
   frontUrl: string;
-  /** Object URL template belakang (opsional) */
   backUrl?: string | null;
   fields: FieldConfig[];
-  /** Baris terpilih saja, urut seperti aslinya — per baris: depan (→ belakang) */
   rows: DataRow[];
-  /**
-   * Kualitas render (dpi kanvas per halaman) — default HD.
-   * Lihat `app/lib/quality.ts`: normal=200 dpi, hd=400 dpi, 4k=lebar 3840 px.
-   */
   quality?: QualityLevel;
-  /**
-   * Dipanggil tiap baris selesai dirender → dipakai progress bar &
-   * hitung mundur estimasi di step 4. (`done` 1-based.)
-   */
   onProgress?: (done: number, total: number) => void;
 }
 
-/** Hasil render PNG per sisi — dipakai opsi "Gambar (ZIP)" */
 export interface RowPng {
   side: TemplateSide;
   blob: Blob;
@@ -43,16 +31,6 @@ interface PageCanvas {
   pxH: number;
 }
 
-/**
- * Render PDF — dipakai 3 opsi unduhan (AGENTS.md):
- * - PDF gabungan: semua baris → multi-halaman (halaman depan, lalu belakang bila ada).
- * - PDF satuan: cukup panggil dengan `rows: [row]` → 1 file per sertifikat.
- * - PNG: lihat renderRowPngs.
- * Template digambar "contain" (letterbox putih) di tengah halaman.
- * Posisi field dalam % relatif terhadap gambar template.
- * fontSize (px natural template) × skala gambar → konsisten dengan
- * yang terlihat di canvas editor (lihat use-template-scale).
- */
 export async function buildCertificatePdf({
   frontUrl,
   backUrl,
@@ -99,15 +77,12 @@ export async function buildCertificatePdf({
     }
 
     onProgress?.(index + 1, rows.length);
-    // Beri giliran browser tiap baris → progress bar & hitung mundur sempat
-    // dirender (render ini sinkron dan bisa lama di kualitas HD/4K)
     await nextPaint();
   }
 
   return pdf;
 }
 
-/** Tunggu frame berikutnya — melepas main thread ke browser untuk paint */
 function nextPaint(): Promise<void> {
   return new Promise((resolve) => {
     if (typeof requestAnimationFrame === "function") {
@@ -118,10 +93,6 @@ function nextPaint(): Promise<void> {
   });
 }
 
-/**
- * Render satu baris jadi PNG per sisi (depan, dan belakang bila ada).
- * Ukuran piksel = halaman A4 pada kualitas terpilih (lihat lib/quality).
- */
 export async function renderRowPngs({
   frontUrl,
   backUrl,
@@ -161,7 +132,6 @@ export async function renderRowPngs({
   return out;
 }
 
-/** Kanvas halaman A4 landscape sesuai kualitas + konteks 2D */
 function createPageCanvas(quality: QualityLevel): PageCanvas {
   const { pxW, pxH } = qualityPixels(quality);
   const canvas = document.createElement("canvas");
@@ -172,7 +142,6 @@ function createPageCanvas(quality: QualityLevel): PageCanvas {
   return { canvas, ctx, pxW, pxH };
 }
 
-/** Gambar satu sisi (template contain + field sisi itu) ke kanvas halaman */
 function drawSide(
   ctx: CanvasRenderingContext2D,
   template: HTMLImageElement,
@@ -181,7 +150,6 @@ function drawSide(
   pxW: number,
   pxH: number,
 ): void {
-  // Skala contain — jaga rasio, pusatkan di halaman
   const scale = Math.min(
     pxW / template.naturalWidth,
     pxH / template.naturalHeight,
@@ -191,7 +159,6 @@ function drawSide(
   const drawX = (pxW - drawW) / 2;
   const drawY = (pxH - drawH) / 2;
 
-  // Kertas putih dulu (template PNG bisa transparan)
   ctx.fillStyle = "#FFFFFF";
   ctx.fillRect(0, 0, pxW, pxH);
   ctx.drawImage(template, drawX, drawY, drawW, drawH);
@@ -200,16 +167,12 @@ function drawSide(
     const text = row[field.columnKey] ?? "";
     if (!text) continue;
     const fontSize = field.fontSize * scale;
-    // Gaya teks: italic & bold terpisah — string font canvas (mis. "italic 700 32px …")
     ctx.font = `${fieldItalic(field) ? "italic " : ""}${field.fontWeight} ${fontSize}px ${fontStack(field.fontFamily)}`;
     ctx.fillStyle = field.color;
     ctx.textBaseline = "top";
     const align = fieldAlign(field);
     ctx.textAlign = align;
-    // Titik gambar mengikuti perataan agar tetap di dalam kotak yang sama
     const boxX = drawX + (field.x / 100) * drawW;
-    // Lebar kotak: handle user (field.width) atau sisa ruang ke tepi kanan —
-    // konsisten dengan `width` di DOM canvas & preview
     const widthPct = field.width ?? 100 - field.x;
     const maxWidth = (widthPct / 100) * drawW;
     const x =
@@ -223,7 +186,6 @@ function drawSide(
       text,
       maxWidth,
     );
-    // Line-height 1.1; +5% fontSize = kompensasi setengah leading di DOM
     const lineHeight = fontSize * 1.1;
     const y0 = drawY + (field.y / 100) * drawH + fontSize * 0.05;
     lines.forEach((line, index) => {
@@ -242,10 +204,8 @@ function canvasToPng(canvas: HTMLCanvasElement): Promise<Blob> {
   });
 }
 
-/** Font web (Inter) harus sudah ter-load sebelum digambar ke canvas */
 async function loadFontsUsed(fields: FieldConfig[]) {
   if (typeof document === "undefined" || !document.fonts) return;
-  // Spec per gaya yang benar-benar dipakai (italic & bold terpisah)
   const specs = new Set(
     fields.map((field) =>
       fontSpec(field.fontStyle ?? "normal", field.fontWeight, field.fontFamily),

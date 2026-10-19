@@ -1,10 +1,5 @@
 import type { SVGProps } from "react";
 
-/**
- * Koleksi ikon SVG inline (gaya outline, stroke = currentColor).
- * Ukuran diatur pemakai lewat className, mis. <DatabaseIcon className="size-4" />.
- * Tanpa dependency ikon eksternal (lihat AGENTS.md).
- */
 type IconProps = SVGProps<SVGSVGElement>;
 
 const baseProps = {
@@ -94,7 +89,6 @@ export function ImagePlusIcon(props: IconProps) {
   );
 }
 
-/** Ikon palet — tombol color picker custom (dibedakan dari swatch cepat) */
 export function PaletteIcon(props: IconProps) {
   return (
     <svg {...baseProps} {...props}>
@@ -134,7 +128,6 @@ export function SpinnerIcon(props: IconProps) {
   );
 }
 
-/** Ikon rotasi — layar selayar HP (rotate device) */
 export function RotateIcon(props: IconProps) {
   return (
     <svg {...baseProps} {...props}>
@@ -144,7 +137,6 @@ export function RotateIcon(props: IconProps) {
   );
 }
 
-/** Ikon perisai — kartu keunggulan "diproses di browser" / privasi */
 export function ShieldIcon(props: IconProps) {
   return (
     <svg {...baseProps} {...props}>
@@ -154,7 +146,6 @@ export function ShieldIcon(props: IconProps) {
   );
 }
 
-/** Ikon dua lapis — kartu keunggulan template depan & belakang */
 export function LayersIcon(props: IconProps) {
   return (
     <svg {...baseProps} {...props}>
@@ -165,7 +156,6 @@ export function LayersIcon(props: IconProps) {
   );
 }
 
-/** Perataan teks kiri — kontrol field di panel canvas */
 export function AlignLeftIcon(props: IconProps) {
   return (
     <svg {...baseProps} {...props}>
@@ -177,7 +167,6 @@ export function AlignLeftIcon(props: IconProps) {
   );
 }
 
-/** Perataan teks tengah — kontrol field di panel canvas */
 export function AlignCenterIcon(props: IconProps) {
   return (
     <svg {...baseProps} {...props}>
@@ -189,7 +178,6 @@ export function AlignCenterIcon(props: IconProps) {
   );
 }
 
-/** Perataan teks kanan — kontrol field di panel canvas */
 export function AlignRightIcon(props: IconProps) {
   return (
     <svg {...baseProps} {...props}>
@@ -201,7 +189,6 @@ export function AlignRightIcon(props: IconProps) {
   );
 }
 
-/** Ikon grid — tombol Dashboard di navbar */
 export function GridIcon(props: IconProps) {
   return (
     <svg {...baseProps} {...props}>
@@ -213,7 +200,6 @@ export function GridIcon(props: IconProps) {
   );
 }
 
-/** Ikon panah kanan — CTA hero landing */
 export function ArrowRightIcon(props: IconProps) {
   return (
     <svg {...baseProps} {...props}>
@@ -223,7 +209,6 @@ export function ArrowRightIcon(props: IconProps) {
   );
 }
 
-/** Ikon panah atas — link "Kembali ke atas" footer landing */
 export function ArrowUpIcon(props: IconProps) {
   return (
     <svg {...baseProps} {...props}>
@@ -233,7 +218,6 @@ export function ArrowUpIcon(props: IconProps) {
   );
 }
 
-/** Ikon chevron bawah — toggle akordeon FAQ */
 export function ChevronDownIcon(props: IconProps) {
   return (
     <svg {...baseProps} {...props}>
@@ -242,7 +226,6 @@ export function ChevronDownIcon(props: IconProps) {
   );
 }
 
-/** Ikon kilau — badge "Contoh desain sertifikat" di hero */
 export function SparklesIcon(props: IconProps) {
   return (
     <svg {...baseProps} {...props}>
@@ -255,7 +238,6 @@ export function SparklesIcon(props: IconProps) {
   );
 }
 
-/** Ikon bingkai — langkah "Desain di Kanvas" di landing */
 export function FrameIcon(props: IconProps) {
   return (
     <svg {...baseProps} {...props}>
@@ -267,7 +249,6 @@ export function FrameIcon(props: IconProps) {
   );
 }
 
-/** Ikon amplop — baris kontak Email */
 export function MailIcon(props: IconProps) {
   return (
     <svg {...baseProps} {...props}>
@@ -277,7 +258,6 @@ export function MailIcon(props: IconProps) {
   );
 }
 
-/** Ikon telepon — baris kontak Telepon */
 export function PhoneIcon(props: IconProps) {
   return (
     <svg {...baseProps} {...props}>
@@ -286,7 +266,6 @@ export function PhoneIcon(props: IconProps) {
   );
 }
 
-/** Ikon pin peta — baris kontak Alamat */
 export function MapPinIcon(props: IconProps) {
   return (
     <svg {...baseProps} {...props}>
@@ -296,12 +275,29 @@ export function MapPinIcon(props: IconProps) {
   );
 }
 
-/** Ikon jam — baris kontak Jam Operasional */
 export function ClockIcon(props: IconProps) {
   return (
     <svg {...baseProps} {...props}>
       <circle cx="12" cy="12" r="10" />
       <path d="M12 6v6l4 2" />
+    </svg>
+  );
+}
+
+export function InstagramIcon(props: IconProps) {
+  return (
+    <svg {...baseProps} {...props}>
+      <rect x="2" y="2" width="20" height="20" rx="5" ry="5" />
+      <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
+      <line x1="17.5" y1="6.5" x2="17.51" y2="6.5" />
+    </svg>
+  );
+}
+
+export function GitHubIcon(props: IconProps) {
+  return (
+    <svg {...baseProps} {...props}>
+      <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22" />
     </svg>
   );
 }

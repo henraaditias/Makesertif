@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { stagger } from "animejs";
 import { CheckIcon, ChevronRightIcon, SpinnerIcon } from "../common/icons";
 import Segmented from "../common/segmented";
+import FadeIn from "../common/fade-in";
 import { fontStack } from "@/lib/fonts";
 import { buildFileName } from "@/lib/filename";
 import {
@@ -28,36 +29,25 @@ import type {
 import { DOWNLOAD_BUTTON_LABEL, fieldAlign, fieldItalic, fieldSide } from "./types";
 
 export interface ResultProps {
-  /** Object URL template depan */
   image: string | null;
-  /** Object URL template belakang (opsional) */
   imageBack: string | null;
   fields: FieldConfig[];
   rows: DataRow[];
   phase: ResultPhase;
-  /** Pesan error generate */
   error: string | null;
-  /** Jenis unduhan terakhir — menentukan pesan status "berhasil" */
   lastOutput: DownloadKind | null;
-  /** Indeks baris yang DIKECUALIKAN dari PDF (kosong = semua terpilih) */
   excludedRows: Set<number>;
-  /** Baris yang sedang ditampilkan di preview */
   previewIndex: number;
   onPreviewIndexChange: (index: number) => void;
   onToggleExclude: (index: number) => void;
   onToggleAll: () => void;
-  /** Header kolom — pilihan kolom penamaan file */
   headers: string[];
-  /** Kolom penamaan file (`2026-001_{kolom}`) — dipakai PDF satuan & PNG */
   fileNameColumn: string;
   onFileNameColumnChange: (column: string) => void;
-  /** Format unduhan pilihan user (panel Unduh step 4) */
   downloadFormat: DownloadKind;
   onDownloadFormatChange: (format: DownloadKind) => void;
-  /** Kualitas render pilihan user */
   quality: QualityLevel;
   onQualityChange: (quality: QualityLevel) => void;
-  /** Progres generate (null saat tidak ada proses berjalan) */
   progress: GenerateProgress | null;
 }
 
@@ -66,7 +56,6 @@ const SIDES: { id: TemplateSide; label: string }[] = [
   { id: "back", label: "Belakang" },
 ];
 
-/** Pilihan format di panel Unduh — label singkat utk segmented control */
 const FORMAT_OPTIONS: { id: DownloadKind; label: string; desc: string }[] = [
   { id: "pdf", label: "PDF", desc: "Satu file multi-halaman (A4 landscape)" },
   {
@@ -81,21 +70,12 @@ const FORMAT_OPTIONS: { id: DownloadKind; label: string; desc: string }[] = [
   },
 ];
 
-/** Kelas perataan per field — harus sama dengan yang dipakai di canvas */
 const ALIGN_CLASS: Record<TextAlign, string> = {
   left: "text-left",
   center: "text-center",
   right: "text-right",
 };
 
-/**
- * Step 4 — Complete the process (Design.md "Preview data" + hasil generate).
- * Preview per baris (tab Depan/Belakang bila ada template belakang),
- * pilihan kolom penamaan file, dan status generate.
- * 3 opsi unduhan dibuka dari tombol primary "Download" di action bar
- * (menu pilihan — lihat certificate-wizard); state fase/seleksi/generate
- * hidup di wizard sehingga tombol primary bisa label & loading dari fase itu.
- */
 export default function Result({
   image,
   imageBack,
@@ -128,8 +108,6 @@ export default function Result({
     FORMAT_OPTIONS[0];
   const qualityLabel = qualityPreset(quality).label;
 
-  // Hitung mundur live: tick tiap 500 ms → sisa waktu dihitung di dalam
-  // callback (performance.now dipanggil di effect, bukan saat render/purity)
   const [remainingMs, setRemainingMs] = useState<number | null>(null);
   useEffect(() => {
     if (!isGenerating || !progress) return;
@@ -146,7 +124,6 @@ export default function Result({
     return () => clearInterval(timer);
   }, [isGenerating, progress]);
 
-  // Deret titik loading — stagger loop anime.js, dilewati bila reduced motion
   useEffect(() => {
     const dots = dotsRef.current;
     if (!isGenerating || !dots) return;
@@ -160,7 +137,6 @@ export default function Result({
     });
   }, [isGenerating]);
 
-  // Banner sukses "pop" sekali saat generate selesai
   useEffect(() => {
     if (phase !== "done" || !successRef.current) return;
     return animateSafe(successRef.current, {
@@ -171,7 +147,6 @@ export default function Result({
     });
   }, [phase, lastOutput]);
 
-  // Template belakang dihapus di luar → kembali aman ke sisi depan
   const currentSide: TemplateSide =
     previewSide === "back" && !imageBack ? "front" : previewSide;
   const activeImage = currentSide === "front" ? image : imageBack;
@@ -179,7 +154,6 @@ export default function Result({
 
   const { layerRef, imgRef, scale } = useTemplateScale(activeImage);
 
-  // Crossfade preview saat sisi template berubah
   useEffect(() => {
     if (!layerRef.current) return;
     return animateSafe(layerRef.current, {
@@ -196,12 +170,10 @@ export default function Result({
   const allSelected = excludedRows.size === 0;
   const isPreparing = phase === "preparing";
   const pageCount = selectedCount * (imageBack ? 2 : 1);
-  // Contoh nama: nomor urut baris ini di antara baris terpilih (001, 002, …)
   const chosenBefore = rows
     .slice(0, safeIndex)
     .filter((_, i) => !excludedRows.has(i)).length;
   const sampleName = buildFileName(fileNameColumn, currentRow, chosenBefore);
-  // Prakiraan durasi sebelum mulai — pakai kecepatan terakhir bila pernah generate
   const estimateMs = estimateDurationMs(quality, downloadFormat, selectedCount);
 
   const successMessage = (() => {
@@ -216,13 +188,10 @@ export default function Result({
 
   return (
     <div className="flex flex-1 flex-col gap-4">
-      {/* Preview sertifikat untuk baris aktif */}
       <div className="flex flex-1 flex-col gap-3">
         <div className="flex min-h-90 flex-1 items-center justify-center rounded-panel border border-line bg-surface-subtle p-4 short:min-h-0 short:p-2">
           {activeImage ? (
             <div ref={layerRef} className="relative inline-block max-w-full">
-              {/* URL blob lokal — tidak bisa dioptimasi next/image */}
-              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 ref={imgRef}
                 src={activeImage}
@@ -236,9 +205,8 @@ export default function Result({
                   role="presentation"
                   className={[
                     "absolute whitespace-pre-wrap break-words rounded-detail leading-[1.1]",
-                    // Nilai dinamis → CSS variable, dikonsumsi kelas arbitrary
-                    // value Tailwind (styling tetap di className)
                     "left-[var(--fx)] top-[var(--fy)] w-[var(--fw)] text-[length:var(--fs)]",
+                    field.height != null ? "h-[var(--fh)]" : "",
                     "font-[family-name:var(--ff)] text-[color:var(--fc)]",
                     field.fontWeight === 700 ? "font-bold" : "font-normal",
                     fieldItalic(field) ? "italic" : "",
@@ -248,8 +216,9 @@ export default function Result({
                     {
                       "--fx": `${field.x}%`,
                       "--fy": `${field.y}%`,
-                      // Lebar sama dengan canvas (handle user / sisa ruang tepi kanan)
                       "--fw": `${field.width ?? 100 - field.x}%`,
+                      "--fh":
+                        field.height != null ? `${field.height}%` : undefined,
                       "--fs": `${field.fontSize * scale}px`,
                       "--ff": fontStack(field.fontFamily),
                       "--fc": field.color,
@@ -275,7 +244,6 @@ export default function Result({
           )}
         </div>
 
-        {/* Toggle sisi di BAWAH preview — posisi sama seperti di canvas */}
         {imageBack && (
           <div
             role="tablist"
@@ -303,7 +271,6 @@ export default function Result({
         )}
       </div>
 
-      {/* Kontrol seleksi baris + navigator preview */}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-panel border border-line bg-surface px-4 py-3">
         <label className="flex cursor-pointer items-center gap-2 text-body text-ink">
           <input
@@ -353,8 +320,6 @@ export default function Result({
         </div>
       </div>
 
-      {/* Panel Unduh — format, kualitas, penamaan file, dan estimasi waktu.
-          Menggantikan menu popup di atas tombol (kesepakatan: pilihan inline). */}
       <div className="flex flex-col gap-4 rounded-panel border border-line bg-surface p-4">
         <div className="flex flex-col gap-2">
           <span className="text-label text-ink">Format file</span>
@@ -392,7 +357,7 @@ export default function Result({
 
         <label className="flex flex-col gap-1.5">
           <span className="text-label text-ink">
-            Nama file — tahun-nomor (001) pilih kolom
+            Nama file: tahun-nomor (001) + kolom terpilih
           </span>
           <select
             value={fileNameColumn}
@@ -407,12 +372,11 @@ export default function Result({
           </select>
           <span className="truncate text-ink-disabled">
             Contoh: {sampleName}.pdf
-            {imageBack ? " (+ suffix sisi)" : ""} — nomor urut per unduhan
+            {imageBack ? " (+ suffix sisi)" : ""}, nomor urut per unduhan
             (001, 002, …)
           </span>
         </label>
 
-        {/* Estimasi sebelum mulai → berubah jadi progres + hitung mundur */}
         <div className="flex flex-col gap-2 rounded-control bg-blue-surface px-3 py-3">
           {isGenerating && progress ? (
             <>
@@ -461,14 +425,13 @@ export default function Result({
             </>
           ) : (
             <span className="text-body text-ink-muted tabular-nums">
-              Perkiraan ± {formatDurationMs(estimateMs)} — {pageCount} halaman
+              Perkiraan ± {formatDurationMs(estimateMs)}, {pageCount} halaman
               · kualitas {qualityLabel} · {DOWNLOAD_BUTTON_LABEL[downloadFormat]}
             </span>
           )}
         </div>
       </div>
 
-      {/* Status generate */}
       {phase === "done" && (
         <div
           ref={successRef}
@@ -479,7 +442,9 @@ export default function Result({
         </div>
       )}
       {phase === "error" && error && (
-        <p className="text-body text-danger">{error}</p>
+        <FadeIn key={error} effect="pop">
+          <p className="text-body text-danger">{error}</p>
+        </FadeIn>
       )}
     </div>
   );

@@ -3,20 +3,10 @@ import FadeIn from "../common/fade-in";
 import { ArrowRightIcon } from "../common/icons";
 import CertificatePreview from "./certificate-preview";
 
-/**
- * Hero landing — mengikuti mockup rev/ (Header.png): gradien indigo,
- * mock sertifikat, judul uppercase, CTA ungu tua ke wizard.
- * Ukuran desktop dikompakkan (keputusan user: jangan terlalu besar ke
- * layar); tinggi = viewport − navbar dengan justify-center + kartu
- * dibatasi vh → CTA tidak pernah jatuh ke bawah fold (keputusan user:
- * hero harus muat di layar tanpa scroll). Animasi masuk berjenjang
- * (kartu pop, lalu judul → subteks → CTA).
- */
 export default function Hero() {
   return (
     <section className="hero-gradient flex min-h-[calc(100dvh_-_60px)] flex-col justify-center px-5 py-8 sm:px-8 sm:py-10">
       <div className="mx-auto max-w-[1000px]">
-        {/* Kartu sertifikat: pop scale (outBack) sekali saat mount */}
         <FadeIn effect="pop">
           <CertificatePreview />
         </FadeIn>

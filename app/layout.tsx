@@ -5,7 +5,6 @@ import "./globals.css";
 const inter = Inter({
   variable: "--font-inter",
   subsets: ["latin"],
-  // Varian italic wajib dimuat — toggle Italic di panel canvas & render PDF/PNG
   style: ["normal", "italic"],
   display: "swap",
 });

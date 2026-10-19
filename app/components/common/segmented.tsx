@@ -9,20 +9,13 @@ export interface SegmentOption {
 }
 
 export interface SegmentedProps {
-  /** aria-label untuk radiogroup */
   label: string;
   options: SegmentOption[];
   value: string;
   onChange: (id: string) => void;
-  /** Nonaktifkan seluruh kontrol (mis. saat generate berjalan) */
   disabled?: boolean;
 }
 
-/**
- * Pilihan bentuk pil (radiogroup) — indikator berwarna meluncur ke pil
- * aktif memakai anime.js; warna/ukuran tetap token Tailwind.
- * Dipakai untuk pilihan Format & Kualitas di panel Unduh step 4.
- */
 export default function Segmented({
   label,
   options,
@@ -47,8 +40,6 @@ export default function Segmented({
     ind.style.width = `${pos.width}px`;
   };
 
-  // Posisi awal — layout effect jalan SEBELUM paint, jadi indikator tidak pernah
-  // terlihat di posisi sembarang (tanpa setState: langsung ke DOM)
   useLayoutEffect(() => {
     if (placedRef.current) return;
     const pos = measure();
@@ -58,7 +49,6 @@ export default function Segmented({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Pilihan berubah → indikator meluncur (tanpa animasi bila reduced motion)
   useEffect(() => {
     if (!placedRef.current) return;
     const pos = measure();
@@ -77,7 +67,6 @@ export default function Segmented({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value]);
 
-  // Ukuran berubah (resize / font termuat) → reposisi tanpa animasi
   useEffect(() => {
     const onResize = () => {
       const pos = measure();
@@ -99,8 +88,6 @@ export default function Segmented({
         ref={indicatorRef}
         aria-hidden
         className="absolute top-1 bottom-1 rounded-chip bg-selected"
-        // Nilai awal 0 (tak terlihat); layout effect menaruhnya sebelum paint,
-        // sisanya digerakkan anime.js — React tidak menyentuh style ini lagi
         style={{ left: 0, width: 0 }}
       />
       {options.map((option) => {

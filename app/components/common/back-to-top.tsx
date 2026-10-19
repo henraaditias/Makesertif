@@ -3,12 +3,6 @@
 import { animateScrollToTop } from "@/lib/animations";
 import { ArrowUpIcon } from "./icons";
 
-/**
- * Link "Kembali ke atas" (footer landing) — menggulir halus ke atas
- * memakai anime.js (inOutCubic, ±650 ms). Tanpa efek bila user memakai
- * `prefers-reduced-motion` (langsung loncat ke atas). href="#top"
- * dipertahankan sebagai fallback bila JS belum siap.
- */
 export default function BackToTop() {
   return (
     <a

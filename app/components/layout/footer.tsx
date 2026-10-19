@@ -3,10 +3,6 @@ import BackToTop from "../common/back-to-top";
 
 export interface FooterProps {
   className?: string;
-  /**
-   * `wizard` (default): catatan privasi + Privacy policy (wizard & dashboard).
-   * `landing`: copyright + Privacy policy + "Kembali ke atas" (mockup rev/).
-   */
   variant?: "wizard" | "landing";
 }
 

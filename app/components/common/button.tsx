@@ -8,33 +8,25 @@ export type ButtonSize = "sm" | "md";
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
   size?: ButtonSize;
-  /** Ikon di kiri label; ukuran diatur lewat className ikon, mis. size-4 */
   iconLeft?: ReactNode;
   iconRight?: ReactNode;
-  /** Tampilkan spinner dan nonaktifkan tombol */
   loading?: boolean;
 }
 
 const variantClass: Record<ButtonVariant, string> = {
-  // Design.md: primary = #6366F1 + teks putih
   primary:
     "bg-primary text-surface hover:opacity-90 active:opacity-80",
-  // Design.md: secondary = putih dengan border neutral
   secondary:
     "border border-line-strong bg-surface text-ink hover:bg-surface-subtle",
-  // Design.md: destructive = merah
   destructive:
     "bg-danger text-surface hover:opacity-90 active:opacity-80",
 };
 
 const sizeClass: Record<ButtonSize, string> = {
-  // tombol kompak: Ubah File, Hapus Data, Preview
   sm: "px-6 py-2.5 text-label",
-  // tombol aksi utama: Lanjutkan, Unduh
   md: "px-6 py-3 text-label",
 };
 
-/** Elemen interaktif bersama tombol & link (hindari <button> di dalam <a>) */
 const controlClass = [
   "inline-flex items-center justify-center gap-2 rounded-control transition",
   "disabled:pointer-events-none disabled:opacity-50",
@@ -87,10 +79,6 @@ export interface ButtonLinkProps {
   children: ReactNode;
 }
 
-/**
- * Link navigasi dengan gaya sama persis seperti Button —
- * dipakai CTA halaman utama (Design.md: satu primary action per layar).
- */
 export function ButtonLink({
   href,
   variant = "primary",

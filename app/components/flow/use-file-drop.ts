@@ -1,10 +1,5 @@
 import { useState, type DragEvent } from "react";
 
-/**
- * State drag-over + props handler drop untuk zone upload.
- * dragLeave di-guard via relatedTarget agar tidak flicker
- * saat kursor melewati anak-anak zone.
- */
 export function useFileDrop(onFile: (file: File) => void) {
   const [dragging, setDragging] = useState(false);
 

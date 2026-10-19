@@ -12,9 +12,11 @@ import Result from "./result";
 import {
   ChevronRightIcon,
   DownloadIcon,
+  FileTextIcon,
   ImagePlusIcon,
 } from "../common/icons";
 import RotateGate from "../common/rotate-gate";
+import ConfirmModal from "../common/confirm-modal";
 import type {
   DataSource,
   DataRow,
@@ -27,8 +29,9 @@ import type {
 } from "./types";
 import { DOWNLOAD_BUTTON_LABEL } from "./types";
 import { fieldSide } from "./types";
-import { parseCsv, type CsvTable } from "@/lib/csv";
+import { looksBinary, parseCsv, type CsvTable } from "@/lib/csv";
 import { sheetCsvUrl } from "@/lib/sheets";
+import { fetchTextOnce } from "@/lib/http";
 import { DEFAULT_TEXT_COLOR, FONT_FAMILIES, fontSpec } from "@/lib/fonts";
 import { DEFAULT_QUALITY, recordMsPerRow } from "@/lib/quality";
 import { fadeInUp, useAnimationLayoutEffect } from "@/lib/animations";
@@ -36,7 +39,6 @@ import {
   buildFileName,
   uniqueFileName,
 } from "@/lib/filename";
-import { buildCertificatePdf, renderRowPngs } from "@/lib/pdf";
 import { createZip, type ZipEntry } from "@/lib/zip";
 import {
   consumePurge,
@@ -52,7 +54,8 @@ import {
   saveTemplateRecord,
 } from "@/lib/activity";
 
-/** Definisi 4 step — teks persis mockup (rev/Mockup.png) */
+const loadPdfLib = () => import("@/lib/pdf");
+
 const STEPS: StepItem[] = [
   {
     id: "template",
@@ -77,19 +80,11 @@ const STEPS: StepItem[] = [
 ];
 
 const IMAGE_TYPES = ["image/jpeg", "image/png"];
-const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 10 MB
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 
-/**
- * Kerangka halaman /certificate (Tahap 2):
- * latar indigo → kartu putih besar → step nav kiri, konten kanan,
- * action bar (sekunder kiri / primary kanan) + catatan privasi di bawah kartu.
- *
- * Semua transisi step terjadi di sini; tampilan per step di-mount dari
- * komponen folder flow/ (upload-certificate, upload-data, edit-canvas, result).
- */
 export default function CertificateWizard() {
-  const [step, setStep] = useState(0); // 0..3 → index STEPS
-  const [image, setImage] = useState<string | null>(null); // object URL template
+  const [step, setStep] = useState(0);
+  const [image, setImage] = useState<string | null>(null);
   const [imageInfo, setImageInfo] = useState<{
     name: string;
     size: number;
@@ -103,30 +98,24 @@ export default function CertificateWizard() {
   const [dataError, setDataError] = useState<string | null>(null);
   const [fields, setFields] = useState<FieldConfig[]>([]);
 
-  // Step 4 — hasil generate (fase hidup di wizard agar tombol primary ikut)
   const [phase, setPhase] = useState<ResultPhase>("preparing");
   const [resultError, setResultError] = useState<string | null>(null);
   const [excludedRows, setExcludedRows] = useState<Set<number>>(
     () => new Set(),
   );
   const [previewIndex, setPreviewIndex] = useState(0);
-  // Panel Unduh step 4 — format & kualitas (pilihan inline, tanpa menu popup)
   const [downloadFormat, setDownloadFormat] = useState<DownloadKind>("pdf");
   const [quality, setQuality] = useState<QualityLevel>(DEFAULT_QUALITY);
-  // Progres generate (per baris) → progress bar & hitung mundur di panel
   const [progress, setProgress] = useState<GenerateProgress | null>(null);
 
-  // Persistence (Tahap 7) — refresh TIDAK menghapus data; hapus hanya via Delete Data
   const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
-  const [imageBack, setImageBack] = useState<string | null>(null); // object URL belakang
+  const [imageBack, setImageBack] = useState<string | null>(null);
   const [imageInfoBack, setImageInfoBack] = useState<{
     name: string;
     size: number;
   } | null>(null);
   const [imageDataUrlBack, setImageDataUrlBack] = useState<string | null>(null);
-  // Sisi template yang ditampilkan di step 1 (toggle Depan/Belakang)
   const [templateSide, setTemplateSide] = useState<TemplateSide>("front");
-  // Kolom penamaan file `2026-001_{kolom}` — "" = kolom pertama
   const [fileNameColumn, setFileNameColumn] = useState("");
   const [lastOutput, setLastOutput] = useState<DownloadKind | null>(null);
 
@@ -139,23 +128,16 @@ export default function CertificateWizard() {
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stepContentRef = useRef<HTMLDivElement>(null);
 
-  // Transisi antar step — fade-up halus anime.js (tanpa efek bila reduced motion)
   useAnimationLayoutEffect(() => {
     return fadeInUp(stepContentRef.current, { y: 10, duration: 360 });
   }, [step]);
 
-  // 1) Pulihkan sesi. Draft dibaca sinkron di effect ini (sebelum save boleh
-  //    menulis), diterapkan pada microtask → tidak ada setState sinkron di
-  //    effect (lint) dan HTML server tetap cocok (tanpa hydration mismatch).
   useEffect(() => {
-    // Sesi purge (Delete Data) → konsumsi flag; localStorage sudah kosong
     consumePurge();
     const draft = loadDraft();
     Promise.resolve()
       .then(() => {
         if (draft) {
-          // Clamp ke step yang mungkin sesuai kesiapan data hasil restore
-          // (mis. gambar dibuang oleh fallback kuota saat save)
           const maxStep = draft.image
             ? draft.rows.length > 0
               ? draft.fields.length > 0
@@ -177,7 +159,6 @@ export default function CertificateWizard() {
           if (typeof draft.fileNameColumn === "string") {
             setFileNameColumn(draft.fileNameColumn);
           }
-          // Format & kualitas (opsional — draft lama tetap default)
           if (
             draft.downloadFormat === "pdf" ||
             draft.downloadFormat === "zip-pdf" ||
@@ -207,7 +188,6 @@ export default function CertificateWizard() {
       });
   }, []);
 
-  // 2) Auto-save draft (debounce 300 ms) — hanya setelah restore selesai
   useEffect(() => {
     if (!restoredRef.current) return;
     draftRef.current = {
@@ -256,10 +236,8 @@ export default function CertificateWizard() {
     quality,
   ]);
 
-  // 3) Flush sesi terakhir saat refresh/tab ditutup (pagehide) dan unmount
   useEffect(() => {
     const flush = () => {
-      // Sesi purge (Delete Data → reload): jangan tulis ulang draft saat pagehide
       if (isPurging()) return;
       if (restoredRef.current && draftRef.current) saveDraft(draftRef.current);
     };
@@ -270,14 +248,11 @@ export default function CertificateWizard() {
     };
   }, []);
 
-  // Prasyarat per step → menentukan apakah tombol primary aktif
   const templateReady = image !== null;
   const dataReady = rows.length > 0 && !dataLoading;
   const fieldsReady = fields.length > 0;
-  // Kolom penamaan file efektif ("" → kolom pertama dari data)
   const effectiveFileNameColumn = fileNameColumn || headers[0] || "";
 
-  /** Validasi file gambar (JPG/PNG, maks 10 MB) — dipakai sisi depan & belakang */
   const validateImageFile = (file: File): string | null => {
     if (!IMAGE_TYPES.includes(file.type)) {
       return "Format file harus JPG atau PNG.";
@@ -298,14 +273,12 @@ export default function CertificateWizard() {
     if (image) URL.revokeObjectURL(image);
     setImageInfo({ name: file.name, size: file.size });
     setImage(URL.createObjectURL(file));
-    // Riwayat di dashboard (IndexedDB) — diam, gagal simpan bukan fatal
     void saveTemplateRecord({
       side: "front",
       name: file.name,
       size: file.size,
       blob: file,
     });
-    // Siapkan versi data URL untuk auto-save (di-resize bila muat kuota)
     void toPersistableImage(file)
       .then(setImageDataUrl)
       .catch(() => setImageDataUrl(null));
@@ -321,7 +294,6 @@ export default function CertificateWizard() {
     if (imageBack) URL.revokeObjectURL(imageBack);
     setImageInfoBack({ name: file.name, size: file.size });
     setImageBack(URL.createObjectURL(file));
-    // Tampilan berpindah ke belakang agar hasil upload langsung terlihat
     setTemplateSide("back");
     void saveTemplateRecord({
       side: "back",
@@ -334,28 +306,30 @@ export default function CertificateWizard() {
       .catch(() => setImageDataUrlBack(null));
   };
 
-  /** Hapus template belakang — konfirmasi dulu bila ada field di sisi itu */
-  const handleRemoveBack = () => {
-    const backFields = fields.filter((f) => fieldSide(f) === "back");
-    if (
-      backFields.length > 0 &&
-      !window.confirm(
-        "Hapus template belakang? Field di sisi belakang juga akan dihapus.",
-      )
-    ) {
-      return;
-    }
+  const [removeBackOpen, setRemoveBackOpen] = useState(false);
+
+  const performRemoveBack = () => {
+    setRemoveBackOpen(false);
     if (imageBack) URL.revokeObjectURL(imageBack);
     setImageBack(null);
     setImageInfoBack(null);
     setImageDataUrlBack(null);
     setTemplateSide("front");
+    const backFields = fields.filter((f) => fieldSide(f) === "back");
     if (backFields.length > 0) {
       setFields((prev) => prev.filter((f) => fieldSide(f) !== "back"));
     }
   };
 
-  /** Terapkan hasil parse: buat minimal ada header + 1 baris data */
+  const handleRemoveBack = () => {
+    const hasBackFields = fields.some((f) => fieldSide(f) === "back");
+    if (hasBackFields) {
+      setRemoveBackOpen(true);
+      return;
+    }
+    performRemoveBack();
+  };
+
   const applySheetData = ({ headers: cols, rows: data }: CsvTable) => {
     if (cols.length === 0 || data.length === 0) {
       throw new Error(
@@ -369,11 +343,25 @@ export default function CertificateWizard() {
   const handleCsvFile = async (file: File) => {
     if (dataLoading) return;
     setDataError(null);
+
+    if (!/\.csv$/i.test(file.name)) {
+      setDataError(
+        "File bukan CSV. Jika datanya dari Excel, ekspor dulu sebagai CSV lalu unggah ulang.",
+      );
+      return;
+    }
+
     setDataLoading(true);
     try {
-      const table = parseCsv(await file.text());
+      const text = await file.text();
+      if (looksBinary(text)) {
+        setDataError(
+          "Isi file bukan teks CSV (kemungkinan file Excel). Ekspor ulang sebagai CSV lalu coba lagi.",
+        );
+        return;
+      }
+      const table = parseCsv(text);
       applySheetData(table);
-      // Riwayat di dashboard — nama file CSV hanya dicatat di sini
       void saveDatasetRecord({
         source: "csv",
         name: file.name,
@@ -409,13 +397,7 @@ export default function CertificateWizard() {
     setDataError(null);
     setDataLoading(true);
     try {
-      const response = await fetch(endpoint);
-      if (!response.ok) {
-        throw new Error(
-          "Sheet tidak ditemukan atau belum dibagikan ke publik.",
-        );
-      }
-      const text = await response.text();
+      const text = await fetchTextOnce(endpoint);
       if (/^\s*</.test(text)) {
         throw new Error(
           "Link mengembalikan halaman, bukan data. Bagikan sheet sebagai “Anyone with the link”.",
@@ -423,20 +405,20 @@ export default function CertificateWizard() {
       }
       const table = parseCsv(text);
       applySheetData(table);
-      // Riwayat di dashboard (link + jumlah baris; tanpa file)
       void saveDatasetRecord({
         source: "sheets",
         url: link,
         rows: table.rows.length,
       });
     } catch (err) {
-      // Respons privat/tanpa ACAO diblokir CORS → fetch melempar TypeError
       setDataError(
         err instanceof TypeError
           ? "Gagal memuat data dari browser. Pastikan sheet dibagikan sebagai “Anyone with the link”, atau gunakan File CSV."
-          : err instanceof Error
-            ? err.message
-            : "Gagal memuat data dari Google Sheets.",
+          : err instanceof Error && err.message.startsWith("HTTP ")
+            ? "Sheet tidak ditemukan atau belum dibagikan ke publik."
+            : err instanceof Error
+              ? err.message
+              : "Gagal memuat data dari Google Sheets.",
       );
     } finally {
       setDataLoading(false);
@@ -445,7 +427,6 @@ export default function CertificateWizard() {
 
   const handleSourceChange = (next: DataSource) => {
     if (next === source || dataLoading) return;
-    // Data yang sudah dimuat milik sumber sebelumnya → kosongkan
     setSource(next);
     setRows([]);
     setHeaders([]);
@@ -457,22 +438,17 @@ export default function CertificateWizard() {
     if (dataError) setDataError(null);
   };
 
-  // "Ubah File" (tombol di posisi toggle setelah upload): kembali ke tampilan
-  // sebelum input data — zone CSV kosong / input link Sheets (langsung fokus).
   const handleChangeData = () => {
     setRows([]);
     setHeaders([]);
     setDataError(null);
-    // Seleksi baris milik data lama → reset untuk data baru
     setPreviewIndex(0);
     setExcludedRows(new Set());
     if (source === "sheets") {
-      // Input link kembali tampil setelah re-render
       setTimeout(() => linkInputRef.current?.focus(), 0);
     }
   };
 
-  // Tambah field dari kolom yang dipilih panel (default: kolom pertama belum terpakai sisi itu)
   const handleAddField = (columnKey: string, side: TemplateSide) => {
     if (!columnKey) return;
     setFields((prev) => [
@@ -501,9 +477,6 @@ export default function CertificateWizard() {
     setFields((prev) => prev.filter((field) => field.id !== id));
   };
 
-  // Pra-load font saat pertama masuk step 4 — preview & PDF konsisten.
-  // Semua kombinasi keluarga × berat × gaya (italic terpisah dari bold),
-  // sehingga toggle di panel canvas langsung tampil benar saat dirender.
   useEffect(() => {
     if (step !== 3 || phase !== "preparing") return;
     let cancelled = false;
@@ -543,10 +516,8 @@ export default function CertificateWizard() {
     );
   };
 
-  /** Baris terpilih saja (urut asli) — dipakai ketiga opsi unduhan */
   const chosenRows = () => rows.filter((_, index) => !excludedRows.has(index));
 
-  /** Unduh blob sementara (revoke ditunda agar unduhan sempat jalan) */
   const downloadBlob = (blob: Blob, fileName: string) => {
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
@@ -556,7 +527,6 @@ export default function CertificateWizard() {
     setTimeout(() => URL.revokeObjectURL(url), 60_000);
   };
 
-  // Opsi 1 — PDF gabungan multi-halaman (primary "Unduh" di action bar)
   const handleGeneratePdf = async () => {
     if (!image || phase === "generating" || selectedCount === 0) return;
     const chosen = chosenRows();
@@ -565,6 +535,7 @@ export default function CertificateWizard() {
     setResultError(null);
     setProgress({ done: 0, total: chosen.length, startedAt });
     try {
+      const { buildCertificatePdf } = await loadPdfLib();
       const doc = await buildCertificatePdf({
         frontUrl: image,
         backUrl: imageBack,
@@ -577,7 +548,6 @@ export default function CertificateWizard() {
       const fileName = `certificate-${new Date().toISOString().slice(0, 10)}.pdf`;
       const blob = doc.output("blob");
       downloadBlob(blob, fileName);
-      // Riwayat di dashboard — blob yang sama diunduh & disimpan
       void saveResultRecord({
         output: "pdf",
         fileName,
@@ -585,7 +555,6 @@ export default function CertificateWizard() {
         pages: chosen.length * (imageBack ? 2 : 1),
         blob,
       });
-      // Kecepatan aktual → dasar estimasi berikutnya
       recordMsPerRow(
         quality,
         "pdf",
@@ -602,7 +571,6 @@ export default function CertificateWizard() {
     }
   };
 
-  // Opsi 2 — PDF satuan per sertifikat, nama dari pola → dikumpulkan jadi ZIP
   const handleDownloadSatuan = async () => {
     if (!image || phase === "generating" || selectedCount === 0) return;
     const chosen = chosenRows();
@@ -611,6 +579,7 @@ export default function CertificateWizard() {
     setResultError(null);
     setProgress({ done: 0, total: chosen.length, startedAt });
     try {
+      const { buildCertificatePdf } = await loadPdfLib();
       const used = new Set<string>();
       const entries: ZipEntry[] = [];
       for (const [index, row] of chosen.entries()) {
@@ -630,11 +599,9 @@ export default function CertificateWizard() {
           data: new Uint8Array(doc.output("arraybuffer")),
         });
         setProgress({ done: index + 1, total: chosen.length, startedAt });
-        // Beri giliran browser → progress bar & hitung mundur sempat dirender
         await new Promise((resolve) => setTimeout(resolve, 0));
       }
       if (entries.length === 1) {
-        // Cuma satu file → langsung unduh, tidak perlu ZIP
         const blob = new Blob([entries[0].data], { type: "application/pdf" });
         downloadBlob(blob, entries[0].name);
         void saveResultRecord({
@@ -672,7 +639,6 @@ export default function CertificateWizard() {
     }
   };
 
-  // Opsi 3 — PNG per baris per sisi → ZIP (suffix sisi bila belakang ada)
   const handleDownloadImages = async () => {
     if (!image || phase === "generating" || selectedCount === 0) return;
     const chosen = chosenRows();
@@ -681,6 +647,7 @@ export default function CertificateWizard() {
     setResultError(null);
     setProgress({ done: 0, total: chosen.length, startedAt });
     try {
+      const { renderRowPngs } = await loadPdfLib();
       const used = new Set<string>();
       const entries: ZipEntry[] = [];
       for (const [index, row] of chosen.entries()) {
@@ -704,7 +671,6 @@ export default function CertificateWizard() {
           });
         }
         setProgress({ done: index + 1, total: chosen.length, startedAt });
-        // Beri giliran browser → progress bar & hitung mundur sempat dirender
         await new Promise((resolve) => setTimeout(resolve, 0));
       }
       const zip = createZip(entries);
@@ -733,7 +699,6 @@ export default function CertificateWizard() {
     }
   };
 
-  /** Primary action step 4 — langsung generate format yang dipilih di panel */
   const runDownload = () => {
     if (downloadFormat === "pdf") void handleGeneratePdf();
     else if (downloadFormat === "zip-pdf") void handleDownloadSatuan();
@@ -756,12 +721,9 @@ export default function CertificateWizard() {
       setStep(step + 1);
       return;
     }
-    // Step 4 — langsung generate format yang dipilih (panel inline, tanpa menu)
     runDownload();
   };
 
-  // Action bar kiri: step template → tambah/hapus tampilan belakang;
-  // step lain → Sebelumnya (step nav tidak bisa diklik, jadi ini satu-satunya jalan kembali)
   const secondaryAction = ((): ReactNode => {
     if (step === 0) {
       if (!templateReady) return null;
@@ -832,7 +794,6 @@ export default function CertificateWizard() {
             onPickFile={() => csvInputRef.current?.click()}
             onFile={handleCsvFile}
             onSubmitSheet={handleSubmitSheet}
-            onChangeData={handleChangeData}
             linkInputRef={linkInputRef}
           />
         );
@@ -878,39 +839,40 @@ export default function CertificateWizard() {
   })();
 
   return (
-    // h-dvh: tinggi layar penuh → halaman TIDAK digulir; yang bergulir hanya
-    // isi step (lihat area overflow-y-auto di dalam kartu)
     <div className="flex h-dvh flex-col bg-indigo-surface">
       <Navbar />
 
-      {/* Layar selayar untuk layar <768px (HP portrait) — cukup dirotot, web langsung tampil */}
       <RotateGate />
 
       <main className="mx-auto flex w-full max-w-7xl min-h-0 flex-1 flex-col px-4 py-4 short:py-2 md:px-6">
-        {/* Ikon bantuan (?) di pojok kanan atas kartu DISIAPKAN untuk
-            disimpan — tombolnya sengaja disembunyikan dulu (permintaan user);
-            struktur `relative` di section tetap agar mudah dipasang lagi */}
         <section className="relative flex min-h-0 flex-1 flex-col rounded-container border border-line bg-surface p-5 shadow-card short:p-3">
-          {/* Step nav di kiri TIDAK ikut scroll — hanya isi step (kolom kanan)
-              yang bergulir; action bar & footer menempel di luar area scroll */}
           <div className="flex min-h-0 flex-1 gap-5 lg:gap-10">
             <aside className="w-52 shrink-0 short:w-44 lg:w-70">
               <StepNav steps={STEPS} current={step} />
             </aside>
 
             <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-              {/* Satu-satunya area scroll di layar ini; konten di-fade-up
-                  tiap ganti step (anime.js, dilewati bila reduced motion) */}
               <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1">
                 <div ref={stepContentRef} className="flex min-h-full flex-col">
                   {stepContent}
                 </div>
               </div>
 
-              {/* Action bar: aksi sekunder kiri, satu primary action kanan —
-                  selalu terlihat (di luar area scroll) */}
               <div className="mt-6 flex flex-wrap items-center justify-between gap-4 short:mt-3 md:mt-8">
-                <div>{secondaryAction}</div>
+                <div className="flex flex-wrap items-center gap-3">
+                  {secondaryAction}
+                  {step === 1 && rows.length > 0 && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      disabled={dataLoading}
+                      iconLeft={<FileTextIcon className="size-4" />}
+                      onClick={handleChangeData}
+                    >
+                      Ubah File
+                    </Button>
+                  )}
+                </div>
                 <div className="relative">
                   <Button
                     variant="primary"
@@ -943,7 +905,6 @@ export default function CertificateWizard() {
         </section>
       </main>
 
-      {/* File picker tersembunyi, di-owned wizard agar bisa dipakai zone preview & tombol aksi */}
       <input
         ref={imageInputRef}
         type="file"
@@ -976,6 +937,15 @@ export default function CertificateWizard() {
           if (file) handleCsvFile(file);
           e.target.value = "";
         }}
+      />
+
+      <ConfirmModal
+        open={removeBackOpen}
+        title="Hapus tampilan belakang?"
+        message="Field di sisi belakang juga akan dihapus. Tindakan ini tidak bisa dibatalkan."
+        confirmLabel="Hapus"
+        onConfirm={performRemoveBack}
+        onCancel={() => setRemoveBackOpen(false)}
       />
     </div>
   );

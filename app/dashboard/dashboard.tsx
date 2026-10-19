@@ -38,45 +38,35 @@ import { cachedThumb, thumbUrl, warmThumbs } from "@/lib/thumb";
 import { downloadTiming } from "@/lib/download";
 import { formatDurationMs } from "@/lib/quality";
 import PreviewModal, { type PreviewTarget } from "./preview-modal";
+import ConfirmModal from "@/components/common/confirm-modal";
 
-/** Label jenis output — istilah baku tetap Inggris (lihat AGENTS.md) */
 const OUTPUT_LABEL: Record<DownloadKind, string> = {
   pdf: "PDF gabungan",
   "zip-pdf": "PDF satuan",
   "zip-img": "Gambar PNG",
 };
 
-/** Panel akordeon — urut dari kiri ke kanan */
 type PanelId = "templates" | "datasets" | "results";
 const PANEL_IDS: PanelId[] = ["templates", "datasets", "results"];
 
-/** Lebar panel non-aktif (tab vertikal) — 48px di layar sempit, 56px di ≥1024px */
 const COLLAPSED_WIDE = 56;
 const COLLAPSED_NARROW = 48;
 
-/** Transisi melebar/mengecil panel (anime.js) */
 const PANEL_DURATION = 320;
 
-/** Satu proses unduhan di dashboard — dasar status loading + estimasi */
 interface DownloadJob {
   id: string;
   name: string;
   size: number;
-  /** Date.now() saat tombol diklik */
   startedAt: number;
-  /** Estimasi total proses (ms) — lihat `lib/download` */
   totalMs: number;
   phase: "preparing" | "sending" | "error";
-  /** Teks kesalahan saat phase "error" */
   error?: string;
 }
 
-/** Batas status "Menyiapkan" sebelum dianggap macet (ms) */
 const PREPARE_TIMEOUT_MS = 15_000;
-/** Status error otomatis hilang (ms) */
 const ERROR_DISMISS_MS = 6000;
 
-/** Lebar target tiap panel: aktif = sisa ruang, non-aktif = tab sempit */
 function widthsFor(
   activeId: PanelId,
   total: number,
@@ -94,12 +84,6 @@ function widthsFor(
   return out;
 }
 
-/**
- * Panel akordeon — yang aktif melebar (header + daftar ber-scroll),
- * yang non-aktif jadi tab vertikal (klik untuk membuka).
- * Lebar elemen diatur imperative dari Dashboard (animasi anime.js),
- * jadi lebar TIDAK boleh lewat className/style React.
- */
 const PANEL_CLASS =
   "flex min-w-0 flex-col overflow-hidden bg-surface border-l border-line first:border-l-0";
 
@@ -168,10 +152,6 @@ function Panel({
   );
 }
 
-/**
- * Preview thumbnail — gambar dikecilkan dulu di `lib/thumb` (cache per id)
- * supaya buka panel tidak nge-frame; placeholder tampil selama dimuat.
- */
 function Thumb({ id, name }: { id: string; name: string }) {
   const [url, setUrl] = useState<string | null>(() => cachedThumb(id));
 
@@ -183,7 +163,6 @@ function Thumb({ id, name }: { id: string; name: string }) {
         if (active) setUrl(u);
       })
       .catch(() => {
-        /* file hilang — placeholder tetap tampil */
       });
     return () => {
       active = false;
@@ -208,7 +187,6 @@ function Thumb({ id, name }: { id: string; name: string }) {
   );
 }
 
-/** Baris meta (ukuran/baris/halaman + sisa waktu TTL) */
 function Meta({ children }: { children: ReactNode }) {
   return <p className="text-body text-ink-muted">{children}</p>;
 }
@@ -221,31 +199,24 @@ export default function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [now, setNow] = useState<number>(() => Date.now());
-  // Panel yang melebar — default panel kanan (Hasil Generate) sesuai mockup
   const [active, setActive] = useState<PanelId>("results");
-  // Pratinjau isi (gambar · tabel · PDF · ZIP) — modal, dimuat on-demand
   const [preview, setPreview] = useState<PreviewTarget | null>(null);
-  // Proses unduhan berjalan → tombol loading + strip status (estimasi)
   const [job, setJob] = useState<DownloadJob | null>(null);
-  /** Elapsed (ms) proses unduhan berjalan — diisi ticker di effect, bukan render */
+  const [clearOpen, setClearOpen] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(0);
-  /** Cerminan `job` untuk dicek setelah await (mencegah status "bangkit lagi") */
   const jobRef = useRef<DownloadJob | null>(null);
   useEffect(() => {
     jobRef.current = job;
   }, [job]);
-  /** Pemanasan thumbnail hanya sekali (refresh TTL jalan tiap 60 detik) */
   const warmedRef = useRef(false);
 
   const boxRef = useRef<HTMLDivElement | null>(null);
   const panelRefs = useRef<Partial<Record<PanelId, HTMLElement | null>>>({});
-  /** Lebar sudah pernah diukur & dipasang sekali (sebelum paint pertama) */
   const placedRef = useRef(false);
   const prevActiveRef = useRef<PanelId>(active);
 
   const ready = data !== null;
 
-  /** Pasang lebar semua panel TANPA animasi (layout awal / resize / reduced motion) */
   const applyWidths = useCallback((id: PanelId) => {
     const box = boxRef.current;
     const total = box?.clientWidth ?? 0;
@@ -263,8 +234,6 @@ export default function Dashboard() {
     return ok;
   }, []);
 
-  // Pemasangan awal SEBELUM paint (tanpa flash) + transisi anime.js saat
-  // panel berganti. Anime hanya menggerakkan `width`; konten di-swap React.
   useAnimationLayoutEffect(() => {
     if (!ready) {
       placedRef.current = false;
@@ -298,12 +267,10 @@ export default function Dashboard() {
       });
     });
     return () => {
-      // Dijeda sebelum giliran berikutnya → klik cepat tidak tabrakan
       for (const cleanup of cleanups) cleanup();
     };
   }, [active, ready, applyWidths]);
 
-  // Resize window → lebar menyesuaikan langsung (tanpa animasi)
   useEffect(() => {
     const onResize = () => {
       if (placedRef.current) applyWidths(active);
@@ -316,7 +283,6 @@ export default function Dashboard() {
     const d = await loadDashboard();
     setData(d);
     setNow(Date.now());
-    // Panaskan thumbnail template di latar belakang (sekali saja, pelan)
     const thumbIds = d.templates
       .filter((t) => t.hasFile)
       .map((t) => t.id);
@@ -331,13 +297,10 @@ export default function Dashboard() {
     }
   }, []);
 
-  // Muat awal — microtask seperti pola restore wizard: hindari setState
-  // sinkron di body effect (lint react-hooks/set-state-in-effect)
   useEffect(() => {
     Promise.resolve().then(() => void refresh());
   }, [refresh]);
 
-  // Tiap 60 detik & saat tab kembali fokus: update countdown + prune TTL
   useEffect(() => {
     const tick = () => void refresh();
     const timer = setInterval(tick, 60_000);
@@ -350,25 +313,16 @@ export default function Dashboard() {
     };
   }, [refresh]);
 
-  /** Hapus data sesi Dashboard (terpisah dari Hapus Data wizard) */
-  const handleClear = () => {
-    const ok = window.confirm(
-      "Hapus semua data Dashboard (file terunggah, data, dan hasil unduhan)? Data sesi membuat sertifikat tidak ikut terhapus. Tindakan ini tidak bisa dibatalkan.",
-    );
-    if (!ok) return;
+  const handleClear = () => setClearOpen(true);
+
+  const confirmClear = () => {
+    setClearOpen(false);
     void clearDashboard()
       .catch(() => {})
       .finally(() => window.location.reload());
   };
 
-  /**
-   * Unduh file dari IndexedDB — tampilkan status "Menyiapkan" + estimasi
-   * sisa waktu, lalu jalankan anchor download browser (fase "Mengunduh").
-   * Satu proses dalam satu waktu; status error hilang otomatis.
-   */
   const startDownload = async (id: string, name: string, size: number) => {
-    // Akses lewat helper: TS suka "menyempitkan" jobRef.current ke null
-    // setelah guard pertama sehingga blok sesudah await jadi `never`
     const currentJob = () => jobRef.current;
     if (currentJob()) return;
     const base: DownloadJob = {
@@ -387,13 +341,12 @@ export default function Dashboard() {
     } catch {
       blob = null;
     }
-    // Pengguna bisa saja menutup status selagi menunggu — jangan lanjut
     if (currentJob()?.id !== id) return;
     if (!blob) {
       setJob({
         ...base,
         phase: "error",
-        error: "File tidak ditemukan — mungkin sudah melewati 24 jam.",
+        error: "File tidak ditemukan, mungkin sudah melewati 24 jam.",
       });
       return;
     }
@@ -407,10 +360,6 @@ export default function Dashboard() {
     setJob({ ...base, phase: "sending" });
   };
 
-  /**
-   * Tick status unduhan tiap 250 ms → hitung mundur; estimasi selesai /
-   * error lewat batas / menyiapkan macet → strip ditutup.
-   */
   useEffect(() => {
     if (!job) return;
     const timer = setInterval(() => {
@@ -429,7 +378,6 @@ export default function Dashboard() {
     return () => clearInterval(timer);
   }, [job]);
 
-  /** Sisa waktu tampilan (ms) —0 saat fase error (tanpa estimasi) */
   const sisaMs = job
     ? job.phase === "error"
       ? 0
@@ -445,7 +393,6 @@ export default function Dashboard() {
       <Navbar onDeleteData={handleClear} />
 
       <main className="mx-auto flex w-full max-w-7xl min-h-0 flex-1 flex-col gap-4 px-4 py-5 short:gap-2 short:py-3 md:px-6">
-        {/* Judul + satu primary action layar ini */}
         <div className="flex flex-wrap items-center justify-between gap-4">
           <h1 className="text-display text-ink">Dashboard</h1>
           <ButtonLink
@@ -456,7 +403,6 @@ export default function Dashboard() {
           </ButtonLink>
         </div>
 
-        {/* Masa simpan 24 jam — banner danger mengikuti mockup */}
         <div className="flex items-start gap-3 rounded-container bg-danger px-4 py-3 text-surface shadow-card">
           <DatabaseIcon className="mt-0.5 size-5 shrink-0" />
           <p className="text-body">
@@ -466,7 +412,6 @@ export default function Dashboard() {
           </p>
         </div>
 
-        {/* Pemberitahuan setelah prune otomatis */}
         {notice && (
           <div className="flex items-center justify-between gap-3 rounded-control border border-line bg-surface px-4 py-2 shadow-card">
             <p className="text-body text-ink-secondary">{notice}</p>
@@ -483,12 +428,11 @@ export default function Dashboard() {
 
         {data?.error && (
           <p className="text-label text-danger">
-            {data.error} — riwayat tidak dapat dimuat di browser ini. Proses
+            {data.error}: riwayat tidak dapat dimuat di browser ini. Proses
             membuat sertifikat tetap berjalan normal.
           </p>
         )}
 
-        {/* Status unduhan — loading + estimasi sisa waktu */}
         {job && (
           <div className="rounded-control border border-line bg-surface px-4 py-3 shadow-card">
             <div className="flex items-center justify-between gap-3">
@@ -529,7 +473,6 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* KOTAK — satu-satunya area yang di-scroll isinya */}
         <div
           ref={boxRef}
           className="flex min-h-0 flex-1 overflow-hidden rounded-container border border-line bg-surface shadow-card"
@@ -724,8 +667,6 @@ export default function Dashboard() {
                       <Meta>
                         {OUTPUT_LABEL[r.output]} · {r.files} file · {r.pages}{" "}
                         halaman · {formatUkuran(r.size)}
-                        {/* File tak tersimpan (>batas/kuota penuh) → Unduh ulang
-                            memang tidak ditampilkan, beri tahu pengguna */}
                         {!r.hasFile && " · file tidak disimpan di browser"}
                       </Meta>
                       <SisaWaktu at={r.at} now={now} />
@@ -767,7 +708,6 @@ export default function Dashboard() {
           )}
         </div>
 
-        {/* Pratinjau isi (gambar · tabel · PDF · ZIP) — overlay di luar scroll */}
         {preview && (
           <PreviewModal
             target={preview}
@@ -783,6 +723,15 @@ export default function Dashboard() {
             onClose={() => setPreview(null)}
           />
         )}
+
+        <ConfirmModal
+          open={clearOpen}
+          title="Hapus data Dashboard?"
+          message="Hapus semua data Dashboard (file terunggah, data, dan hasil unduhan)? Data sesi membuat sertifikat tidak ikut terhapus. Tindakan ini tidak bisa dibatalkan."
+          confirmLabel="Hapus"
+          onConfirm={confirmClear}
+          onCancel={() => setClearOpen(false)}
+        />
       </main>
 
       <Footer />

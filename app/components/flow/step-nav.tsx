@@ -8,21 +8,11 @@ export interface StepItem {
 
 export interface StepNavProps {
   steps: StepItem[];
-  /** Index step aktif (0-based) */
   current: number;
 }
 
 type StepState = "completed" | "active" | "pending";
 
-/**
- * Navigasi step vertikal (Design.md "Navigation Step"):
- * dot indigo untuk aktif/selesai (selesai ditandai centang, bukan warna saja),
- * dot abu untuk pending, garis penghubung tipis antar step.
- * Judul step Bold 16px, deskripsi Regular 12px.
- *
- * Indikator saja — TIDAK bisa diklik. Pindah step hanya lewat tombol
- * "Sebelumnya" / "Lanjutkan" di action bar.
- */
 const StepNav = ({ steps, current }: StepNavProps) => {
   return (
     <ol className="flex flex-col">

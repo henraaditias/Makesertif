@@ -1,12 +1,3 @@
-/**
- * Domain data dashboard — riwayat upload (template & data) + hasil
- * unduhan, disimpan di IndexedDB (lihat idb.ts) dengan masa simpan
- * 24 jam (TTL). Dipanggil wizard (saat upload/generate) & halaman
- * /dashboard (saat membaca/menghapus).
- *
- * ATURAN: semua save* & loadDashboard TIDAK BOLEH melempar error ke
- * pemanggil — gagal menyimpan history tidak boleh mengganggu wizard.
- */
 import type { DataSource, DownloadKind, TemplateSide } from "@/components/flow/types";
 import {
   FILE_STORE,
@@ -23,14 +14,8 @@ import {
   type MetaStore,
 } from "./idb.ts";
 
-/** Masa simpan data dashboard: 24 jam sejak upload/generate */
 export const TTL_MS = 24 * 60 * 60 * 1000;
-/** Maksimum entri per store (entri terbaru dipertahankan) */
 export const CAP_PER_STORE = 30;
-// Catatan: TIDAK ada batas ukuran file — semua file (termasuk ZIP hasil
-// unduhan ratusan MB) selalu dicoba disimpan. Pengaman tetap di `persist`:
-// quota penuh → buang file terlama (maks 3×) → bila tetap gagal, metadata
-// tetap tersimpan tanpa file (hasFile jadi false).
 
 export interface TemplateRec extends BaseRecord {
   side: TemplateSide;
@@ -41,10 +26,8 @@ export interface TemplateRec extends BaseRecord {
 
 export interface DatasetRec extends BaseRecord {
   source: DataSource;
-  /** nama file CSV (source "csv") */
   name?: string;
   size?: number;
-  /** link Google Sheets asli (source "sheets") */
   url?: string;
   rows: number;
   hasFile: boolean;
@@ -53,7 +36,6 @@ export interface DatasetRec extends BaseRecord {
 export interface ResultRec extends BaseRecord {
   output: DownloadKind;
   fileName: string;
-  /** jumlah file (1 untuk PDF gabungan; N untuk ZIP) */
   files: number;
   pages: number;
   size: number;
@@ -68,17 +50,11 @@ export interface DashboardData {
   templates: TemplateRec[];
   datasets: DatasetRec[];
   results: ResultRec[];
-  /** jumlah data kedaluwarsa (≥24 jam) yang dihapus saat load ini */
   pruned: number;
-  /** pesan bila IndexedDB tidak bisa diakses */
   error?: string;
 }
 
-/* ------------------------------------------------------------------ */
-/* Helper murni (diuji terpisah di Node — tanpa IndexedDB)             */
-/* ------------------------------------------------------------------ */
 
-/** Id kronologis: timestamp 15 digit + uuid (urutan key = urutan waktu) */
 export function makeId(at: number = Date.now()): string {
   const uuid =
     typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -91,7 +67,6 @@ export function isExpired(at: number, now: number): boolean {
   return now - at >= TTL_MS;
 }
 
-/** Id entri yang kedaluwarsa */
 export function expiredIds<T extends BaseRecord>(
   list: T[],
   now: number,
@@ -99,7 +74,6 @@ export function expiredIds<T extends BaseRecord>(
   return list.filter((r) => isExpired(r.at, now)).map((r) => r.id);
 }
 
-/** Id entri yang melewati cap — list WAJIB urut terbaru dulu */
 export function capIds<T extends BaseRecord>(
   sortedNewestFirst: T[],
   cap: number = CAP_PER_STORE,
@@ -107,7 +81,6 @@ export function capIds<T extends BaseRecord>(
   return sortedNewestFirst.slice(cap).map((r) => r.id);
 }
 
-/** Label sisa waktu ("Berakhir dalam 6j 20m") — isi pemberitahuan TTL */
 export function sisaWaktuLabel(at: number, now: number): string {
   const sisa = at + TTL_MS - now;
   if (sisa <= 0) return "Kedaluwarsa";
@@ -119,7 +92,6 @@ export function sisaWaktuLabel(at: number, now: number): string {
   return "Berakhir dalam kurang dari 1 menit";
 }
 
-/** Ukuran file ramah (1,2 MB / 340 KB) */
 export function formatUkuran(bytes: number): string {
   if (bytes >= 1024 * 1024)
     return `${(bytes / (1024 * 1024)).toFixed(1).replace(".", ",")} MB`;
@@ -128,23 +100,10 @@ export function formatUkuran(bytes: number): string {
 }
 
 function byAtDesc(a: BaseRecord, b: BaseRecord): number {
-  // Tie-break id (berawal timestamp) supaya dua record dalam ms yang sama
-  // tetap punya urutan deterministik
   return b.at - a.at || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0);
 }
 
-/* ------------------------------------------------------------------ */
-/* Penulisan (dipanggil wizard — diam, tanpa error ke pemanggil)       */
-/* ------------------------------------------------------------------ */
 
-/**
- * Simpan metadata + blob. Berlapis:
- * 1. quota penuh → buang file terlama, coba lagi (maks 3 percobaan);
- * 2. tetap gagal / tak ada file yang bisa dibuang → **metadata tetap
- *    disimpan tanpa file** (`hasFile` di-set false) supaya entri tetap
- *    tampil di dashboard; hanya bila tulis metadata juga gagal → return false.
- * Tidak pernah melempar error ke pemanggil.
- */
 async function persist(
   store: MetaStore,
   meta: BaseRecord & { hasFile: boolean },
@@ -164,9 +123,9 @@ async function persist(
     } catch (err) {
       if (isQuotaError(err)) {
         const freed = await idbDeleteOldest(FILE_STORE).catch(() => false);
-        if (freed) continue; // ada file terlama yang dibuang — coba lagi
+        if (freed) continue;
       }
-      break; // quota tak bisa dibebaskan / error lain → simpan metadata saja
+      break;
     }
   }
 
@@ -179,7 +138,6 @@ async function persist(
   }
 }
 
-/** Buang entri melewati cap (best-effort) setelah simpan sukses */
 async function enforceCap(store: MetaStore): Promise<void> {
   try {
     const all = await idbGetAll<BaseRecord>(store);
@@ -189,7 +147,6 @@ async function enforceCap(store: MetaStore): Promise<void> {
       await idbDelete(FILE_STORE, id).catch(() => {});
     }
   } catch {
-    /* best-effort — load berikutnya akan menangkap */
   }
 }
 
@@ -206,7 +163,6 @@ export async function saveTemplateRecord(input: {
     side: input.side,
     name: input.name,
     size: input.size,
-    // Tanpa batas ukuran — persist menangani quota (evict → metadata saja)
     hasFile: true,
   };
   const ok = await persist("templates", meta, input.blob);
@@ -229,7 +185,7 @@ export async function saveDatasetRecord(input: {
     at,
     source: input.source,
     rows: input.rows,
-    hasFile: blob !== null, // Sheets tanpa file; CSV selalu menyimpan file
+    hasFile: blob !== null,
     ...(input.name !== undefined ? { name: input.name } : {}),
     ...(input.size !== undefined ? { size: input.size } : {}),
     ...(input.url !== undefined ? { url: input.url } : {}),
@@ -255,7 +211,6 @@ export async function saveResultRecord(input: {
     files: input.files,
     pages: input.pages,
     size: input.blob.size,
-    // Tanpa batas ukuran — `gambar-satuan.zip` ratusan MB tetap disimpan
     hasFile: true,
   };
   const ok = await persist("results", meta, input.blob);
@@ -263,9 +218,9 @@ export async function saveResultRecord(input: {
   return ok;
 }
 
-/* ------------------------------------------------------------------ */
-/* Pembacaan & penghapusan (dipanggil halaman dashboard)               */
-/* ------------------------------------------------------------------ */
+
+const inflightDashboard = new Map<string, Promise<DashboardData>>();
+const inflightBlobs = new Map<string, Promise<Blob | null>>();
 
 async function loadMeta<T extends BaseRecord>(
   store: MetaStore,
@@ -285,11 +240,6 @@ async function loadMeta<T extends BaseRecord>(
   return all.filter((r) => !doomed.has(r.id));
 }
 
-/**
- * Buang blob yatim (file tanpa metadata) — sisa kegagalan simpan lama:
- * blob sempat masuk tapi meta gagal ditulis. Grace 10 detik karena proses
- * lain bisa sedang menulis blob (blob dulu, meta menyusul).
- */
 async function cleanOrphanFiles(
   known: Set<string>,
   now: number,
@@ -305,8 +255,15 @@ async function cleanOrphanFiles(
   }
 }
 
-/** Baca semua riwayat (prune kedaluwarsa dulu) — aman dipanggil berulang */
 export async function loadDashboard(): Promise<DashboardData> {
+  const running = inflightDashboard.get("load");
+  if (running) return running;
+  const task = readDashboard().finally(() => inflightDashboard.delete("load"));
+  inflightDashboard.set("load", task);
+  return task;
+}
+
+async function readDashboard(): Promise<DashboardData> {
   const now = Date.now();
   const acc = { pruned: 0 };
   try {
@@ -332,14 +289,17 @@ export async function loadDashboard(): Promise<DashboardData> {
   }
 }
 
-/** Ambil blob satu entri (preview/unduh ulang) — on-demand, bukan saat listing */
 export function loadFileBlob(id: string): Promise<Blob | null> {
-  return idbGet<FileRec>(FILE_STORE, id)
+  const running = inflightBlobs.get(id);
+  if (running) return running;
+  const task = idbGet<FileRec>(FILE_STORE, id)
     .then((rec) => rec?.blob ?? null)
-    .catch(() => null);
+    .catch(() => null)
+    .finally(() => inflightBlobs.delete(id));
+  inflightBlobs.set(id, task);
+  return task;
 }
 
-/** Hapus SEMUA data dashboard (tombol hapus sesi) */
 export function clearDashboard(): Promise<void> {
   return idbClear([...META_STORES, FILE_STORE]);
 }

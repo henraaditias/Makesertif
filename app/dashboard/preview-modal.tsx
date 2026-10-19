@@ -1,17 +1,5 @@
 "use client";
 
-/**
- * Modal pratinjau universal dashboard — overlay di luar area scroll, tanpa
- * animasi (tutup lewat Esc, tombol Tutup, atau klik latar). Semua baris
- * dashboard bisa memakai modul ini:
- *   - File Sertifikat → gambar ukuran penuh
- *   - Data (File CSV) → tabel 50 baris pertama (parser CSV lokal)
- *   - Data (Google Sheets) → tabel via fetch gviz (CORS publik)
- *   - Hasil Generate → PDF via iframe browser; ZIP dibuka dengan
- *     `lib/unzip` (store-only) lalu isinya ditampilkan (gambar/PDF)
- *
- * Blob asli selalu dipakai untuk unduhan; pratinjau hanya tampilan.
- */
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import Button from "@/components/common/button";
@@ -21,6 +9,7 @@ import { parseCsv } from "@/lib/csv";
 import type { DownloadKind } from "@/components/flow/types";
 import { loadFileBlob } from "@/lib/activity";
 import { sheetCsvUrl } from "@/lib/sheets";
+import { fetchTextOnce } from "@/lib/http";
 import {
   isImageName,
   listZipEntries,
@@ -28,7 +17,6 @@ import {
   type ZipEntryInfo,
 } from "@/lib/unzip";
 
-/** Sasaran pratinjau — `type` menentukan isi modal */
 export type PreviewTarget =
   | { type: "template"; id: string; name: string; size: number }
   | { type: "csv"; id: string; name: string; size: number }
@@ -41,9 +29,7 @@ export type PreviewTarget =
       output: DownloadKind;
     };
 
-/** Baris tabel yang ditampilkan (pratinjau tetap ringan) */
 const MAX_TABLE_ROWS = 50;
-/** Nama entri ZIP yang dicantumkan di daftar */
 const MAX_LIST_NAMES = 50;
 
 export default function PreviewModal({
@@ -52,7 +38,6 @@ export default function PreviewModal({
   onClose,
 }: {
   target: PreviewTarget;
-  /** Tak dikirim bila baris tidak punya file unduhan (mis. Google Sheets) */
   download?: { loading: boolean; onClick: () => void };
   onClose: () => void;
 }) {
@@ -97,7 +82,6 @@ export default function PreviewModal({
           </div>
         </div>
 
-        {/* Konten — diganti = komponen di-`key` agar state mulai segar */}
         <div className="flex max-h-[68vh] min-h-0 flex-col overflow-hidden rounded-control border border-line bg-surface-subtle">
           <PreviewBody key={previewKey(target)} target={target} />
         </div>
@@ -106,7 +90,6 @@ export default function PreviewModal({
   );
 }
 
-/** Kunci remount per sasaran — menggantikan reset state manual di effect */
 function previewKey(target: PreviewTarget): string {
   if (target.type === "sheet") return `sheet:${target.url}`;
   if (target.type === "result") return `result:${target.id}`;
@@ -123,16 +106,12 @@ function PreviewBody({ target }: { target: PreviewTarget }) {
   return <TablePreview target={target} />;
 }
 
-/** Teks tengah untuk kondisi memuat/gagal */
 function StatusText({ children }: { children: ReactNode }) {
   return (
     <p className="px-4 py-10 text-center text-body text-ink-muted">{children}</p>
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* Gambar — blob asli dimuat saat modal dibuka                         */
-/* ------------------------------------------------------------------ */
 
 function ImagePreview({ id, name }: { id: string; name: string }) {
   const [url, setUrl] = useState<string | null>(null);
@@ -163,7 +142,6 @@ function ImagePreview({ id, name }: { id: string; name: string }) {
   if (url) {
     return (
       <div className="flex max-h-[60vh] items-center justify-center p-2">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={url}
           alt={name}
@@ -175,16 +153,12 @@ function ImagePreview({ id, name }: { id: string; name: string }) {
   }
   return (
     <StatusText>
-      {failed ? "File tidak ditemukan — mungkin sudah melewati 24 jam." : "Memuat pratinjau…"}
+      {failed ? "File tidak ditemukan, mungkin sudah melewati 24 jam." : "Memuat pratinjau…"}
     </StatusText>
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* Tabel data — File CSV (blob) & Google Sheets (fetch gviz)           */
-/* ------------------------------------------------------------------ */
 
-/** Baca teks tabel: blob File CSV, atau fetch gviz untuk Google Sheets */
 async function loadTableText(
   target: Extract<PreviewTarget, { type: "csv" | "sheet" }>,
 ): Promise<string> {
@@ -193,9 +167,7 @@ async function loadTableText(
     if (!blob) throw new Error("blob hilang");
     return await blob.text();
   }
-  const res = await fetch(sheetCsvUrl(target.url));
-  if (!res.ok) throw new Error("http");
-  return await res.text();
+  return await fetchTextOnce(sheetCsvUrl(target.url));
 }
 
 function TablePreview({
@@ -225,8 +197,8 @@ function TablePreview({
       <StatusText>
         {failed
           ? target.type === "csv"
-            ? "File tidak ditemukan — mungkin sudah melewati 24 jam."
-            : "Data tidak dapat dimuat — pastikan link Google Sheets dibagikan ke publik."
+            ? "File tidak ditemukan, mungkin sudah melewati 24 jam."
+            : "Data tidak dapat dimuat, pastikan link Google Sheets dibagikan ke publik."
           : "Memuat pratinjau…"}
       </StatusText>
     );
@@ -288,9 +260,6 @@ function TablePreview({
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* Hasil generate — PDF langsung, atau isi ZIP (store)                 */
-/* ------------------------------------------------------------------ */
 
 function ResultPreview({
   id,
@@ -300,20 +269,16 @@ function ResultPreview({
   output: DownloadKind;
 }) {
   const [phase, setPhase] = useState<"loading" | "ready" | "error">("loading");
-  /** Blob induk — disimpan agar navigasi antar entri tak perlu baca ulang */
   const [base, setBase] = useState<Blob | null>(null);
   const [url, setUrl] = useState<string | null>(null);
-  /** Entri yang bisa ditampilkan (gambar/PDF sesuai jenis output) */
   const [entries, setEntries] = useState<ZipEntryInfo[]>([]);
   const [names, setNames] = useState<string[]>([]);
   const [index, setIndex] = useState(0);
-  /** "image" bila isi yang tampil sekarang gambar, selain itu PDF */
   const [media, setMedia] = useState<"image" | "pdf">("pdf");
 
   const urlRef = useRef<string | null>(null);
   const mountedRef = useRef(false);
 
-  /** Tukar object URL aktif (yang lama di-revoke — aman dipanggil ulang) */
   const show = useCallback((blob: Blob, name: string, i?: number) => {
     if (!mountedRef.current) return;
     if (urlRef.current) URL.revokeObjectURL(urlRef.current);
@@ -369,7 +334,6 @@ function ResultPreview({
     };
   }, [id, output, show]);
 
-  /** Pindah ke entri lain — blob dibuat on-demand, URL lama di-revoke */
   const go = (next: number) => {
     const entry = entries[next];
     if (!base || !entry) return;
@@ -382,7 +346,7 @@ function ResultPreview({
   if (phase === "error") {
     return (
       <StatusText>
-        File tidak ditemukan — mungkin sudah melewati 24 jam.
+        File tidak ditemukan, mungkin sudah melewati 24 jam.
       </StatusText>
     );
   }

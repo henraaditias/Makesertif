@@ -5,14 +5,9 @@ export interface CsvTable {
   rows: DataRow[];
 }
 
-/**
- * Parser CSV ringan (tanpa dependency).
- * Mendukung: quoted field, koma di dalam kutipan, escape "" , CRLF/LF, dan BOM Excel.
- * Baris pertama = header; baris kosong diabaikan; header duplikat diberi suffix.
- */
 export function parseCsv(input: string): CsvTable {
   let text = input;
-  if (text.charCodeAt(0) === 0xfeff) text = text.slice(1); // BOM
+  if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
 
   const records = splitRecords(text);
   if (records.length === 0) return { headers: [], rows: [] };
@@ -32,7 +27,6 @@ export function parseCsv(input: string): CsvTable {
   return { headers, rows };
 }
 
-/** State machine pemisah record: kutipan, escape, koma, CR/LF */
 function splitRecords(input: string): string[][] {
   const records: string[][] = [];
   let row: string[] = [];
@@ -80,7 +74,6 @@ function splitRecords(input: string): string[][] {
   return records;
 }
 
-/** Header kosong → "Column"; duplikat → "Name (2)", "Name (3)", ... */
 function uniqueHeaders(raw: string[]): string[] {
   const seen = new Map<string, number>();
   return raw.map((name) => {
@@ -89,4 +82,16 @@ function uniqueHeaders(raw: string[]): string[] {
     seen.set(base, count + 1);
     return count === 0 ? base : `${base} (${count + 1})`;
   });
+}
+
+export function looksBinary(text: string): boolean {
+  const sample = text.slice(0, 4096);
+  let control = 0;
+  for (const char of sample) {
+    const code = char.codePointAt(0) ?? 0;
+    if (code === 0xfffd) return true;
+    if (code === 0) return true;
+    if (code < 32 && code !== 9 && code !== 10 && code !== 13) control++;
+  }
+  return control > sample.length * 0.02;
 }

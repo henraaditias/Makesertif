@@ -1,11 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 
-/**
- * Skala tampilan template: tinggi layer ÷ tinggi piksel asli gambar.
- * Dipakai edit-canvas & result supaya font (px natural) konsisten
- * dengan hasil render PDF (lihat app/lib/pdf.ts).
- * setState hanya di callback ResizeObserver (async), bukan sinkron di effect.
- */
 export function useTemplateScale(dep: unknown) {
   const layerRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);

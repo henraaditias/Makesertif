@@ -1,9 +1,8 @@
 "use client";
 
-import type { RefObject } from "react";
-import Button from "../common/button";
+import { useEffect, useRef, useState, type RefObject } from "react";
+import FadeIn from "../common/fade-in";
 import {
-  FileTextIcon,
   SendIcon,
   SpinnerIcon,
   TableIcon,
@@ -20,14 +19,9 @@ export interface UploadDataProps {
   error: string | null;
   onSourceChange: (source: DataSource) => void;
   onSheetUrlChange: (url: string) => void;
-  /** Buka file picker CSV (milik wizard) */
   onPickFile: () => void;
-  /** Hasil drop CSV langsung ke zone */
   onFile: (file: File) => void;
   onSubmitSheet: () => void;
-  /** Aksi ganti data setelah upload — tampil sebagai tombol "Ubah File" di posisi toggle: kembali ke tampilan awal (zone kosong / input link) */
-  onChangeData: () => void;
-  /** Ref input link — wizard memakainya untuk fokus ulang saat Ganti data (mode Sheets) */
   linkInputRef?: RefObject<HTMLInputElement | null>;
 }
 
@@ -36,11 +30,6 @@ const SOURCES: { id: DataSource; label: string }[] = [
   { id: "sheets", label: "Google Sheets" },
 ];
 
-/**
- * Step 2 — Entering data (Design.md "Upload Card" + preview data).
- * State: empty (per sumber), loading, error, dan table preview.
- * Parsing CSV di app/lib/csv.ts; fetch Sheets di app/lib/sheets.ts (CORS gviz).
- */
 export default function UploadData({
   source,
   sheetUrl,
@@ -53,7 +42,6 @@ export default function UploadData({
   onPickFile,
   onFile,
   onSubmitSheet,
-  onChangeData,
   linkInputRef,
 }: UploadDataProps) {
   const { dragging, dropProps } = useFileDrop(onFile);
@@ -124,21 +112,13 @@ export default function UploadData({
         </div>
       )}
 
-      {error && <p className="text-label text-danger">{error}</p>}
+      {error && (
+        <FadeIn key={error} effect="pop" className="w-full text-center">
+          <p className="text-label text-danger">{error}</p>
+        </FadeIn>
+      )}
 
-      {/* Setelah data terupload: toggle diganti tombol "Ubah File".
-          Sebelum upload: toggle pilih sumber (File CSV / Google Sheets). */}
-      {rows.length > 0 ? (
-        <Button
-          variant="secondary"
-          size="sm"
-          disabled={loading}
-          iconLeft={<FileTextIcon className="size-4" />}
-          onClick={onChangeData}
-        >
-          Ubah File
-        </Button>
-      ) : (
+      {rows.length === 0 && (
         <div className="inline-flex rounded-control bg-blue-surface p-1">
           {SOURCES.map((item) => (
             <button
@@ -161,7 +141,11 @@ export default function UploadData({
   );
 }
 
-/** Tabel preview data — gaya sheet: header sticky, nomor baris, zebra */
+const VIRTUAL_THRESHOLD = 100;
+const OVERSCAN = 10;
+const ROW_ESTIMATE = 35;
+const VIEWPORT_ESTIMATE = 400;
+
 function DataTable({
   headers,
   rows,
@@ -169,6 +153,75 @@ function DataTable({
   headers: string[];
   rows: DataRow[];
 }) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const tbodyRef = useRef<HTMLTableSectionElement>(null);
+  const [rowH, setRowH] = useState(ROW_ESTIMATE);
+  const [viewportH, setViewportH] = useState(0);
+  const [scrollTop, setScrollTop] = useState(0);
+  const rafRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const id = requestAnimationFrame(() => {
+      const el = scrollRef.current;
+      if (el) {
+        const h = el.clientHeight;
+        setViewportH((prev) => (Math.abs(prev - h) > 1 ? h : prev));
+      }
+      const first = tbodyRef.current?.querySelector("tr[data-vrow]");
+      if (first) {
+        const h = first.getBoundingClientRect().height;
+        setRowH((prev) => (Math.abs(prev - h) > 0.5 ? h : prev));
+      }
+    });
+    return () => cancelAnimationFrame(id);
+  }, [rows, headers]);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      const h = el.clientHeight;
+      setViewportH((prev) => (Math.abs(prev - h) > 1 ? h : prev));
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  const handleScroll = () => {
+    if (rafRef.current != null) return;
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = null;
+      const el = scrollRef.current;
+      if (el) setScrollTop(el.scrollTop);
+    });
+  };
+
+  useEffect(
+    () => () => {
+      if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+    },
+    [],
+  );
+
+  const virtual = rows.length > VIRTUAL_THRESHOLD;
+  const viewport = viewportH > 0 ? viewportH : VIEWPORT_ESTIMATE;
+  const start = virtual
+    ? Math.min(
+        Math.max(0, Math.floor(scrollTop / rowH) - OVERSCAN),
+        Math.max(0, rows.length - 1),
+      )
+    : 0;
+  const end = virtual
+    ? Math.min(
+        rows.length,
+        start + Math.ceil(viewport / rowH) + OVERSCAN * 2,
+      )
+    : rows.length;
+  const slice = virtual ? rows.slice(start, end) : rows;
+  const topPad = virtual ? start * rowH : 0;
+  const bottomPad = virtual ? (rows.length - end) * rowH : 0;
+  const colSpan = headers.length + 1;
+
   return (
     <div className="flex w-full flex-1 flex-col overflow-hidden rounded-control border border-line">
       <div className="flex items-center justify-between gap-4 border-b border-line bg-surface-subtle px-4 py-2 text-body">
@@ -177,39 +230,60 @@ function DataTable({
         </span>
         <span className="text-ink-disabled">Preview data</span>
       </div>
-      <div className="min-h-0 flex-1 overflow-auto">
+      <div
+        ref={scrollRef}
+        onScroll={virtual ? handleScroll : undefined}
+        className="min-h-0 flex-1 overflow-auto"
+      >
         <table className="w-full border-collapse text-body">
           <thead>
             <tr>
-              <th className="w-10 border-b border-line bg-surface-subtle px-3 py-2 text-right text-label text-ink-muted">
+              <th className="sticky top-0 z-10 w-10 border-b border-line bg-surface-subtle px-3 py-2 text-right text-label text-ink-muted">
                 #
               </th>
               {headers.map((header) => (
                 <th
                   key={header}
-                  className="border-b border-line bg-surface-subtle px-3 py-2 text-left text-label text-ink whitespace-nowrap"
+                  className="sticky top-0 z-10 border-b border-line bg-surface-subtle px-3 py-2 text-left text-label text-ink whitespace-nowrap"
                 >
                   {header}
                 </th>
               ))}
             </tr>
           </thead>
-          <tbody>
-            {rows.map((row, index) => (
-              <tr key={index} className="even:bg-surface-subtle">
-                <td className="border-b border-line px-3 py-2 text-right text-ink-disabled">
-                  {index + 1}
-                </td>
-                {headers.map((header) => (
-                  <td
-                    key={header}
-                    className="border-b border-line px-3 py-2 text-ink-secondary whitespace-nowrap"
-                  >
-                    {row[header]}
-                  </td>
-                ))}
+          <tbody ref={tbodyRef}>
+            {topPad > 0 && (
+              <tr aria-hidden="true">
+                <td colSpan={colSpan} style={{ height: topPad }} />
               </tr>
-            ))}
+            )}
+            {slice.map((row, i) => {
+              const index = start + i;
+              return (
+                <tr
+                  key={index}
+                  data-vrow="1"
+                  className={index % 2 === 1 ? "bg-surface-subtle" : undefined}
+                >
+                  <td className="border-b border-line px-3 py-2 text-right text-ink-disabled">
+                    {index + 1}
+                  </td>
+                  {headers.map((header) => (
+                    <td
+                      key={header}
+                      className="border-b border-line px-3 py-2 text-ink-secondary whitespace-nowrap"
+                    >
+                      {row[header]}
+                    </td>
+                  ))}
+                </tr>
+              );
+            })}
+            {bottomPad > 0 && (
+              <tr aria-hidden="true">
+                <td colSpan={colSpan} style={{ height: bottomPad }} />
+              </tr>
+            )}
           </tbody>
         </table>
       </div>

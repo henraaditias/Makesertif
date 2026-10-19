@@ -39,22 +39,11 @@ const steps = [
   },
 ];
 
-/**
- * Section "Cara Kerjanya" — mengikuti mockup rev/: latar primary, judul
- * uppercase, placeholder area video tutorial, lalu 4 langkah berikon
- * bulat yang dihubungkan garis progress (desktop). Ukuran desktop
- * dikompakkan (keputusan user). Animasi anime.js SAAT SCROLL masuk
- * viewport (`when="view"`): garis progress tumbuh 0 → 31%, langkah
- * stagger fade-up, ikon pop (outBack) — semua dilewati bila reduced motion.
- */
 export default function HowItWorks() {
   const progressRef = useRef<HTMLDivElement>(null);
   const stepsRef = useRef<HTMLDivElement>(null);
-  // Tunggu grid langkah masuk viewport dulu sebelum garis tumbuh
   const stepsInView = useInView(stepsRef);
 
-  // Garis progress desktop tumbuh saat grid langkah masuk viewport
-  // (tanpa efek bila reduced motion)
   useAnimationLayoutEffect(() => {
     const el = progressRef.current;
     if (!el || !stepsInView) return;
@@ -80,7 +69,6 @@ export default function HowItWorks() {
           </div>
         </FadeIn>
 
-        {/* Placeholder video tutorial (konten video menyusul) */}
         <FadeIn delay={100} when="view">
           <div
             className="mx-auto mt-6 aspect-[1.9/1] w-full max-w-[560px] rounded-container bg-surface shadow-card sm:mt-8"
@@ -93,7 +81,6 @@ export default function HowItWorks() {
           ref={stepsRef}
           className="relative mx-auto mt-8 grid max-w-[880px] grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4 lg:gap-7"
         >
-          {/* Garis progress antar langkah (hanya desktop) — tumbuh saat scroll */}
           <div className="absolute left-0 right-0 top-[42px] hidden h-[5px] rounded-full bg-surface/80 lg:block">
             <div
               ref={progressRef}
@@ -109,7 +96,6 @@ export default function HowItWorks() {
               className="relative z-[1]"
             >
               <article>
-                {/* Ikon bulat: pop scale sedikit setelah kartunya muncul */}
                 <FadeIn
                   effect="pop"
                   delay={80 + index * 100}
@@ -120,7 +106,6 @@ export default function HowItWorks() {
                     <Icon className="size-5" />
                   </div>
                 </FadeIn>
-                {/* Garis progress antar langkah di layar kecil */}
                 <div className="mb-2 h-1 w-full rounded-full bg-surface/80 lg:hidden" />
                 <p className="text-body font-bold sm:text-label">{title}</p>
                 <p className="mt-1 max-w-[240px] text-body leading-snug text-surface/95">

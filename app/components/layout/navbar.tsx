@@ -1,17 +1,17 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import Button, { ButtonLink } from "../common/button";
+import ConfirmModal from "../common/confirm-modal";
 import { DatabaseIcon, GridIcon } from "../common/icons";
 import { GC_KEYS, beginPurge } from "@/lib/storage";
+import { animateScrollToTop } from "@/lib/animations";
 
 export interface NavbarProps {
-  /** Override aksi Hapus Data; default: hapus data draft wizard + reload */
   onDeleteData?: () => void;
-  /** Sembunyikan tombol Hapus Data (mis. di landing & halaman privacy) */
   showDeleteData?: boolean;
-  /** Tampilkan tombol primary "Buat Sekarang" → /certificate (khusus landing) */
   showStartCta?: boolean;
 }
 
@@ -21,20 +21,19 @@ const Navbar = ({
   showStartCta = false,
 }: NavbarProps) => {
   const pathname = usePathname();
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
   const handleDeleteData = () => {
     if (onDeleteData) {
       onDeleteData();
       return;
     }
-    const ok = window.confirm(
-      "Hapus data sesi membuat sertifikat di browser ini (template, data, desain kanvas)? Data di Dashboard tidak ikut terhapus. Tindakan ini tidak bisa dibatalkan.",
-    );
-    if (!ok) return;
-    // Tandai purge SEBELUM reload: autosave wizard dilarang menulis ulang
-    // draft saat event pagehide (tanpa ini data "hidup kembali" setelah dihapus)
+    setConfirmOpen(true);
+  };
+
+  const confirmDeleteData = () => {
+    setConfirmOpen(false);
     beginPurge();
-    // Hanya key localStorage (draft + peninggalan) — data dashboard di
-    // IndexedDB tidak disentuh, sesuai keputusan produk
     Object.values(GC_KEYS).forEach((key) => localStorage.removeItem(key));
     window.location.reload();
   };
@@ -42,12 +41,18 @@ const Navbar = ({
   return (
     <header className="border-b border-line">
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-2 md:px-6">
-        <Link href="/">
+        <Link
+          href="/"
+          onClick={(e) => {
+            if (pathname === "/") {
+              e.preventDefault();
+              animateScrollToTop();
+            }
+          }}
+        >
           <span className="text-title text-ink">Makesertif</span>
         </Link>
         <div className="flex items-center gap-3">
-          {/* Di /dashboard tombol Dashboard disembunyikan otomatis —
-              di sana navbar hanya menampilkan Hapus Data */}
           {pathname !== "/dashboard" && (
             <ButtonLink
               href="/dashboard"
@@ -75,6 +80,15 @@ const Navbar = ({
           )}
         </div>
       </div>
+
+      <ConfirmModal
+        open={confirmOpen}
+        title="Hapus data sesi?"
+        message="Hapus data sesi membuat sertifikat di browser ini (template, data, desain kanvas)? Data di Dashboard tidak ikut terhapus. Tindakan ini tidak bisa dibatalkan."
+        confirmLabel="Hapus"
+        onConfirm={confirmDeleteData}
+        onCancel={() => setConfirmOpen(false)}
+      />
     </header>
   );
 };

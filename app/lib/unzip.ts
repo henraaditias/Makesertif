@@ -1,38 +1,17 @@
-/**
- * Pembaca ZIP store-only — pasangan dari penulis di `zip.ts`.
- *
- * File hasil generate selalu memakai metode store (tanpa kompresi), jadi
- * pratinjau cukup dengan dua pembacaan kecil:
- *  1. `listZipEntries` — baca central directory di ekor file (sekali) → daftar
- *     nama + ukuran + offset.
- *  2. `readZipEntry` — baca header lokal 30 byte di offset entri → slice blob
- *     pada posisi data (bytes TIDAK dimuat penuh ke memori; browser membacanya
- *     saat menampilkan).
- *
- * Metode selain store / ZIP64 di luar cakupan (tidak pernah dihasilkan app
- * ini) — entri tersebut dilewati, bukan membuat seluruh preview gagal.
- */
 
 export interface ZipEntryInfo {
-  /** Nama file di dalam ZIP (mis. "001_Budi-depan.png") */
   name: string;
-  /** Ukuran data (= asli, karena metode store) */
   size: number;
-  /** Offset header lokal — dipakai `readZipEntry` */
   offset: number;
 }
 
 const EOCD_SIG = 0x06054b50;
 const CENTRAL_SIG = 0x02014b50;
 const LOCAL_SIG = 0x04034b50;
-/** Panjang pencarian EOCD: 22 byte + komentar maksimal 65535 byte */
 const EOCD_SEARCH = 22 + 0xffff;
-/** Batas entri yang ditampilkan (pratinjau tidak perlu seluruh isi ZIP) */
 const MAX_ENTRIES = 10_000;
-/** Panjang header lokal tetap (nama & ekstra mengikutinya) */
 const LOCAL_HEADER_LEN = 30;
 
-/** Tebak tipe konten dari ekstensi — blob induk bertipe ZIP, bukan isinya */
 function mimeFor(name: string): string {
   const ext = name.slice(name.lastIndexOf(".") + 1).toLowerCase();
   if (ext === "png") return "image/png";
@@ -42,7 +21,6 @@ function mimeFor(name: string): string {
   return "application/octet-stream";
 }
 
-/** Nama file gambar? (dipakai modal pratinjau untuk memilih tampilan) */
 export function isImageName(name: string): boolean {
   const ext = name.slice(name.lastIndexOf(".") + 1).toLowerCase();
   return ext === "png" || ext === "jpg" || ext === "jpeg";
@@ -52,16 +30,10 @@ async function readRange(blob: Blob, start: number, end: number) {
   return blob.slice(start, end).arrayBuffer();
 }
 
-/**
- * Daftar entri ZIP dari central directory (1 pembacaan).
- * Melempar error bila bukan ZIP / kosong / tidak ada entri store.
- */
 export async function listZipEntries(zip: Blob): Promise<ZipEntryInfo[]> {
   const tail = new DataView(
     await readRange(zip, Math.max(0, zip.size - EOCD_SEARCH), zip.size),
   );
-  // EOCD ditandai tanda tangan 4 byte — cari dari akhir (komentar bisa berisi
-  // byte serupa, jadi yang paling akhir adalah yang asli)
   let eocd = -1;
   for (let i = tail.byteLength - 22; i >= 0; i--) {
     if (tail.getUint32(i, true) === EOCD_SIG) {
@@ -103,7 +75,6 @@ export async function listZipEntries(zip: Blob): Promise<ZipEntryInfo[]> {
   return out;
 }
 
-/** Ambil isi satu entri sebagai Blob bertipe sesuai ekstensi */
 export async function readZipEntry(
   zip: Blob,
   entry: ZipEntryInfo,
@@ -114,7 +85,6 @@ export async function readZipEntry(
   if (head.byteLength < LOCAL_HEADER_LEN || head.getUint32(0, true) !== LOCAL_SIG) {
     throw new Error("Header entri ZIP rusak");
   }
-  // Nama & ekstra di header lokal bisa berbeda panjang dari central directory
   const nameLen = head.getUint16(26, true);
   const extraLen = head.getUint16(28, true);
   const start = entry.offset + LOCAL_HEADER_LEN + nameLen + extraLen;

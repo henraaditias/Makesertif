@@ -1,13 +1,5 @@
-/**
- * Menyiapkan template sebagai data URL untuk auto-save localStorage.
- * URL blob TIDAK bertahan refresh — karena itu sesi disimpan sebagai data URL.
- * File yang terlalu besar untuk kuota (~5 MB) dire-encode dulu:
- * sisi terpanjang MAX_STORE_DIM px, JPEG, background putih
- * (konsisten dengan hasil PDF yang juga di-flatten ke putih).
- * Catatan: PDF dirender maks 1754 px lebar (A4 @150 DPI) — 2400 px lebih dari cukup.
- */
 
-const MAX_IMAGE_CHARS = 2_000_000; // ~1,5 MB asli — sisanya untuk rows, riwayat, PDF
+const MAX_IMAGE_CHARS = 2_000_000;
 const MAX_STORE_DIM = 2400;
 const JPEG_QUALITY = 0.85;
 
@@ -43,7 +35,6 @@ function reencode(dataUrl: string): Promise<string> {
         reject(new Error("Canvas 2D tidak didukung browser ini."));
         return;
       }
-      // Flatten transparansi → putih, sama seperti render PDF
       ctx.fillStyle = "#FFFFFF";
       ctx.fillRect(0, 0, width, height);
       ctx.drawImage(img, 0, 0, width, height);
